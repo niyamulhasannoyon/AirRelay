@@ -40,6 +40,12 @@ export async function computeSha256(data) {
     } else if (ArrayBuffer.isView(data)) {
       buffer = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
     } else if (typeof data.arrayBuffer === 'function') {
+      // Memory protection: Reading an entire large file (>128MB) into a single contiguous
+      // ArrayBuffer can crash mobile browsers with RangeError (out of memory).
+      // For files > 128MB, skip eager in-memory hashing to ensure fast, stable transfer.
+      if (typeof data.size === 'number' && data.size > 128 * 1024 * 1024) {
+        return '';
+      }
       buffer = await data.arrayBuffer();
     } else {
       return '';
@@ -48,7 +54,7 @@ export async function computeSha256(data) {
     const digest = await _crypto.subtle.digest('SHA-256', buffer);
     return bufToHex(digest);
   } catch (err) {
-    console.warn('SHA-256 calculation failed:', err);
+    console.warn('SHA-256 calculation failed or skipped:', err);
     return '';
   }
 }

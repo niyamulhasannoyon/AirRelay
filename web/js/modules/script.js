@@ -34,10 +34,27 @@ function getModalQr() {
   return modalQr;
 }
 
+// QR Code instance for inline room connect hub
+var inlineRoomQr = null;
+function getInlineRoomQr() {
+  if (!inlineRoomQr && dom.room_qr_canvas) {
+    inlineRoomQr = new QRious({
+      element: dom.room_qr_canvas,
+      background: '#ffffff',
+      size: 200,
+      foreground: '#080b11',
+      level: 'H',
+    });
+  }
+  return inlineRoomQr;
+}
+
 function updateQRCodes(url) {
   qr.set({ value: url });
   const mq = getModalQr();
   if (mq) mq.set({ value: url });
+  const irq = getInlineRoomQr();
+  if (irq) irq.set({ value: url });
 }
 
 // Get theme mode
@@ -47,6 +64,8 @@ if (window.localStorage.getItem('mode') == 'light') {
   qr.set({foreground: '#212529'});
   const mq = getModalQr();
   if (mq) mq.set({foreground: '#0f172a'});
+  const irq = getInlineRoomQr();
+  if (irq) irq.set({foreground: '#0f172a'});
 }
 
 // Load app version from API. Cosmetic — never let it block or break app boot.
@@ -132,6 +151,9 @@ async function onLoad() {
   }
   // Peer
   else {
+    if (dom.action_mode_nav) dom.action_mode_nav.style.display = 'none';
+    if (dom.room_tab_security_btn) dom.room_tab_security_btn.style.display = 'none';
+
     // Init UI Components
     dom.connect_div.style.display = 'block';
     updateConnectStatus('Finding room...', 'Resolving peer and connection info');
@@ -194,6 +216,8 @@ function themeClick() {
     qr.set({foreground: '#212529'});
     const mq = getModalQr();
     if (mq) mq.set({foreground: '#0f172a'});
+    const irq = getInlineRoomQr();
+    if (irq) irq.set({foreground: '#0f172a'});
   }
   else if (dom.theme_text.innerHTML == 'Light') {
     dom.theme_text.innerHTML = 'Dark'
@@ -205,6 +229,8 @@ function themeClick() {
     qr.set({foreground: '#adb5db'});
     const mq = getModalQr();
     if (mq) mq.set({foreground: '#080b11'});
+    const irq = getInlineRoomQr();
+    if (irq) irq.set({foreground: '#080b11'});
   }
 }
 
@@ -368,6 +394,13 @@ async function checkAndDisplayNearbyRooms() {
       dom.join_nearby_badge.textContent = availableRooms.length;
       dom.join_nearby_badge.style.display = 'inline-block';
     }
+    if (dom.mode_nearby_badge) {
+      dom.mode_nearby_badge.textContent = availableRooms.length;
+      dom.mode_nearby_badge.style.display = 'inline-block';
+    }
+    if (dom.header_nearby_count) {
+      dom.header_nearby_count.style.display = 'inline-block';
+    }
 
     if (dom.nearby_banner) {
       const first = availableRooms[0];
@@ -388,11 +421,126 @@ async function checkAndDisplayNearbyRooms() {
           }
         };
       }
-      dom.nearby_banner.style.display = 'block';
     }
   } catch (err) {
     console.warn('Nearby rooms check failed:', err);
   }
+}
+
+// Action mode switcher: Share Files vs Join Room
+function switchMainMode(mode) {
+  if (mode === 'join') {
+    if (dom.transfer_div) dom.transfer_div.style.display = 'none';
+    if (dom.join_view) dom.join_view.style.display = 'block';
+    dom.mode_join_btn?.classList.add('active');
+    dom.mode_share_btn?.classList.remove('active');
+    switchJoinTab('code');
+  } else {
+    if (dom.join_view) dom.join_view.style.display = 'none';
+    if (dom.transfer_div) dom.transfer_div.style.display = 'block';
+    dom.mode_share_btn?.classList.add('active');
+    dom.mode_join_btn?.classList.remove('active');
+  }
+}
+
+// Room Connect Hub tabs
+function switchRoomHubTab(tab) {
+  const tabs = [
+    { name: 'code', btn: dom.room_tab_code_btn, pane: dom.room_panel_code },
+    { name: 'qr', btn: dom.room_tab_qr_btn, pane: dom.room_panel_qr },
+    { name: 'security', btn: dom.room_tab_security_btn, pane: dom.room_panel_security },
+  ];
+  tabs.forEach(t => {
+    if (t.name === tab) {
+      t.btn?.classList.add('active');
+      if (t.pane) t.pane.style.display = 'block';
+    } else {
+      t.btn?.classList.remove('active');
+      if (t.pane) t.pane.style.display = 'none';
+    }
+  });
+  if (tab === 'qr') {
+    const url = dom.transfer_url_value?.textContent || window.location.href;
+    updateQRCodes(url);
+  }
+}
+
+// Room inline password save
+function saveRoomPassword() {
+  const pwd = dom.room_password_input?.value.trim() || '';
+  user.password = pwd;
+  if (dom.transfer_status_protected) {
+    dom.transfer_status_protected.style.display = pwd.length > 0 ? 'inline-block' : 'none';
+  }
+  showToast(pwd.length > 0 ? 'Room password protected.' : 'Password removed.');
+}
+
+// Inline host name editing
+function initInlineNameEditor() {
+  const showEdit = () => {
+    if (!dom.host_name_edit_wrap || !dom.host_name_display_wrap) return;
+    if (dom.host_name_input) dom.host_name_input.value = user?.name || '';
+    dom.host_name_display_wrap.classList.replace('d-inline-flex', 'd-none');
+    dom.host_name_edit_wrap.classList.replace('d-none', 'd-inline-flex');
+    dom.host_name_input?.focus();
+    dom.host_name_input?.select();
+  };
+
+  const hideEdit = () => {
+    if (!dom.host_name_edit_wrap || !dom.host_name_display_wrap) return;
+    dom.host_name_edit_wrap.classList.replace('d-inline-flex', 'd-none');
+    dom.host_name_display_wrap.classList.replace('d-none', 'd-inline-flex');
+  };
+
+  const saveEdit = () => {
+    const newName = dom.host_name_input?.value.trim();
+    if (newName && user) {
+      user.changeName(newName);
+      const hostAvatar = document.getElementById('transfer-users-list-host-avatar');
+      if (hostAvatar) hostAvatar.innerHTML = getIdenticonSVG(user.name, 18);
+    }
+    hideEdit();
+  };
+
+  dom.host_name_edit_btn?.addEventListener('click', (e) => { e.stopPropagation(); showEdit(); });
+  dom.transfer_users_list_host_name?.addEventListener('click', showEdit);
+  dom.host_name_save_btn?.addEventListener('click', (e) => { e.stopPropagation(); saveEdit(); });
+  dom.host_name_cancel_btn?.addEventListener('click', (e) => { e.stopPropagation(); hideEdit(); });
+  dom.host_name_input?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') saveEdit();
+    if (e.key === 'Escape') hideEdit();
+  });
+}
+
+// Settings menu dropdown
+function initSettingsMenu() {
+  if (!dom.settings_menu_btn || !dom.settings_menu) return;
+
+  const toggleMenu = (e) => {
+    e?.stopPropagation();
+    const isHidden = dom.settings_menu.style.display === 'none' || !dom.settings_menu.style.display;
+    dom.settings_menu.style.display = isHidden ? 'block' : 'none';
+    dom.settings_menu_btn.setAttribute('aria-expanded', isHidden ? 'true' : 'false');
+  };
+
+  const closeMenu = () => {
+    dom.settings_menu.style.display = 'none';
+    dom.settings_menu_btn.setAttribute('aria-expanded', 'false');
+  };
+
+  dom.settings_menu_btn.addEventListener('click', toggleMenu);
+
+  document.addEventListener('click', (e) => {
+    if (!dom.settings_menu.contains(e.target) && e.target !== dom.settings_menu_btn && !dom.settings_menu_btn.contains(e.target)) {
+      closeMenu();
+    }
+  });
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && dom.settings_menu.style.display === 'block') {
+      closeMenu();
+    }
+  });
 }
 
 // Join Room Modal logic
@@ -400,6 +548,12 @@ let scannerStream = null;
 let scannerAnimationId = null;
 
 function openJoinModal(tab = 'code') {
+  if (dom.join_view) {
+    switchMainMode('join');
+    switchJoinTab(tab);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    return;
+  }
   if (!dom.join_modal || typeof bootstrap === 'undefined') return;
   const modal = bootstrap.Modal.getOrCreateInstance(dom.join_modal);
   switchJoinTab(tab);
@@ -864,8 +1018,28 @@ function bindUI() {
   const on = (id, event, fn) => document.getElementById(id)?.addEventListener(event, fn);
   const onEnter = (id, fn) => on(id, 'keydown', (e) => { if (e.key === 'Enter') fn(); });
 
+  // Settings dropdown menu
+  initSettingsMenu();
+
+  // Inline host name editing
+  initInlineNameEditor();
+
+  // Mode switcher (Share Files vs Join Room)
+  on('mode-share-btn', 'click', () => switchMainMode('share'));
+  on('mode-join-btn', 'click', () => switchMainMode('join'));
+  on('join-view-close', 'click', () => switchMainMode('share'));
+
+  // Room Connect Hub tabs
+  on('room-tab-code-btn', 'click', () => switchRoomHubTab('code'));
+  on('room-tab-qr-btn', 'click', () => switchRoomHubTab('qr'));
+  on('room-tab-security-btn', 'click', () => switchRoomHubTab('security'));
+  on('room-password-save-btn', 'click', saveRoomPassword);
+  onEnter('room-password-input', saveRoomPassword);
+
   on('theme-text', 'click', themeClick);
+  on('theme-toggle-btn', 'click', themeClick);
   on('about-text', 'click', aboutClick);
+  on('about-btn', 'click', aboutClick);
   on('header-logo', 'click', () => { window.location.href = '/' });
   on('join-room-btn', 'click', () => openJoinModal('code'));
   onEnter('password-input', connectWithPassword);

@@ -7,15 +7,15 @@ import { acquireWakeLock, releaseWakeLock } from '../wakelock.js';
 import { soundTransferComplete, soundError } from '../sound.js';
 
 const CHUNK_SIZE = 16 * 1024;          // 16 KiB — under SCTP message-size limits on every browser.
-const HIGH_WATER = 64 * 1024;          // 64 KiB — pause reads when DataChannel buffer reaches 64 KB cap.
-const LOW_WATER  = 16 * 1024;          // 16 KiB — resume when it drains to this level.
-const PROGRESS_REPORT_INTERVAL = 256 * 1024;  // Send a progress update every 256 KiB received.
+const HIGH_WATER = 256 * 1024;         // 256 KiB — pipeline up to 256 KB in flight for high throughput.
+const LOW_WATER  = 64 * 1024;          // 64 KiB — resume when it drains to 64 KB.
+const PROGRESS_REPORT_INTERVAL = 512 * 1024;  // Send a progress update every 512 KiB received.
 // Aligned with ICE's own recovery window: browsers keep retrying a 'disconnected'
 // session for ~30s before declaring 'failed', so give up no earlier than they do.
 const ICE_DISCONNECT_GRACE_MS = 30_000;
-// Receiver-side: no inbound frames for this long mid-transfer => the link is dead
-// (the sender's watchdog alone would leave us waiting on a channel that never closes).
-const RECEIVER_STALL_TIMEOUT_MS = 15_000;
+// Receiver-side: no inbound frames for this long mid-transfer => the link is dead.
+// 30s allows large file buffers and network fluctuations without premature timeout.
+const RECEIVER_STALL_TIMEOUT_MS = 30_000;
 // Sender cancel reasons after which the receiver can still resume with a new connection.
 const RESUMABLE_CANCEL_REASONS = new Set(['connection-lost', 'send-failed']);
 
@@ -345,6 +345,8 @@ export class File {
     // that slice from the OS-backed file — peak sender memory stays at one chunk.
     let sent = offset;
     let failure = null;
+    let lastRenderPercent = -1;
+    let lastRenderTime = 0;
     while (sent < this._size) {
       // Aborted by either side, file removed, or peer disconnected
       if (this._aborted) {
@@ -386,7 +388,12 @@ export class File {
       }
       sent = end;
       const senderProgress = this._size > 0 ? Math.floor(sent / this._size * 100) : 100;
-      this._renderTransferProgress(senderProgress, sent);
+      const now = Date.now();
+      if (sent === this._size || senderProgress !== lastRenderPercent || now - lastRenderTime > 150) {
+        lastRenderPercent = senderProgress;
+        lastRenderTime = now;
+        this._renderTransferProgress(senderProgress, sent);
+      }
     }
 
     if (failure) {
@@ -454,7 +461,12 @@ export class File {
   _awaitDrain(dc) {
     if (dc.bufferedAmount < HIGH_WATER) return Promise.resolve();
     return new Promise((resolve) => {
+      let timer = null;
       const cleanup = () => {
+        if (timer) {
+          clearInterval(timer);
+          timer = null;
+        }
         dc.removeEventListener('bufferedamountlow', onResolve);
         dc.removeEventListener('close', onResolve);
         dc.removeEventListener('error', onResolve);
@@ -463,6 +475,15 @@ export class File {
       dc.addEventListener('bufferedamountlow', onResolve);
       dc.addEventListener('close', onResolve);
       dc.addEventListener('error', onResolve);
+
+      // Robust fallback timer: ensures send loop NEVER deadlocks if bufferedamountlow
+      // event was missed, edge-triggered before listener registration, or throttled.
+      timer = setInterval(() => {
+        if (dc.bufferedAmount < HIGH_WATER || dc.readyState !== 'open') {
+          onResolve();
+        }
+      }, 30);
+
       if (dc.bufferedAmount < HIGH_WATER || dc.readyState !== 'open') {
         cleanup();
         resolve();
@@ -827,10 +848,11 @@ export class File {
       } else if (this._sink) {
         const sink = this._sink;
         const size = bytes.byteLength;
-        this._writeChain = this._writeChain.then(async () => {
+        await this._writeChain;
+        this._writeChain = (async () => {
           await sink.write(bytes);
           this._flushed += size;
-        });
+        })();
         await this._writeChain;
       }
     } catch (err) {
@@ -840,10 +862,15 @@ export class File {
       return;
     }
 
-    // Progress UI (single-file mode)
+    // Progress UI (single-file mode, throttled to prevent UI thread freeze)
     const progress = this._size > 0 ? Math.floor(this._transferred / this._size * 100) : 0;
     if (!this._zip) {
-      this._renderTransferProgress(progress, this._transferred);
+      const now = Date.now();
+      if (this._transferred === this._size || progress !== this._lastUiProgress || now - (this._lastUiRenderTime || 0) > 150) {
+        this._lastUiProgress = progress;
+        this._lastUiRenderTime = now;
+        this._renderTransferProgress(progress, this._transferred);
+      }
     }
 
     // Notify the sender of progress, throttled.
@@ -919,7 +946,6 @@ export class File {
       $style(`file-${this._id}-abort`, 'display', 'none');
       $style(`file-${this._id}-icon-loading`, 'display', 'none');
       $style(`file-${this._id}-icon-success`, 'display', 'block');
-      soundTransferComplete();
     }
 
     // Set verified SHA-256 badge

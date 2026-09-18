@@ -510,6 +510,10 @@ export class User {
             badge.dataset.hash = h;
             badge.title = `SHA-256: ${h}\nClick to view full checksum`;
           }
+          const hashCode = document.getElementById(`file-${f.id}-hash-code`);
+          const copyBtn = document.getElementById(`file-${f.id}-hash-copy-btn`);
+          if (hashCode && h) hashCode.textContent = h;
+          if (copyBtn && h) copyBtn.style.display = 'inline-flex';
         }).catch(() => {});
       }
 
@@ -1787,10 +1791,9 @@ export class User {
               </div>
               <div class="file-submeta">
                 <span id="file-${file.id}-info"></span>
-                <span id="file-${file.id}-telemetry" class="file-telemetry-badge-wrap"></span>
-                <span id="file-${file.id}-verified" class="checksum-badge" style="display:none" title="Verified with SHA-256 (Click to inspect)">
+                <span id="file-${file.id}-verified" class="checksum-badge" style="display:none" title="Verified with SHA-256 (Click for full digest)">
                   <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor"><path d="M12.736 3.97a.733.733 0 0 1 1.047 0c.286.289.29.756.01 1.05L7.88 12.01a.733.733 0 0 1-1.065.02L3.217 8.384a.757.757 0 0 1 0-1.06.733.733 0 0 1 1.047 0l3.052 3.093 5.4-6.425z"/></svg>
-                  <span>SHA-256 Verified</span>
+                  <span>Verified</span>
                 </span>
               </div>
             </div>
@@ -1809,18 +1812,21 @@ export class User {
               </svg>
             </div>
 
-            <button id="file-${file.id}-details" class="btn-action-ghost" title="See details" style="display: ${isMine ? 'inline-flex' : 'none'}">
-              <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/><path d="m8.93 6.588-2.29.287-.082.38.45.083c.294.07.352.176.288.469l-.738 3.468c-.194.897.105 1.319.808 1.319.545 0 1.178-.252 1.465-.598l.088-.416c-.2.176-.492.246-.686.246-.275 0-.375-.193-.304-.533L8.93 6.588zM9 4.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/></svg>
-            </button>
-            <button id="file-${file.id}-remove" class="btn-action-danger" title="Remove file" style="display: ${isMine ? 'inline-flex' : 'none'}">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M2.146 2.854a.5.5 0 1 1 .708-.708L8 7.293l5.146-5.147a.5.5 0 0 1 .708.708L8.707 8l5.147 5.146a.5.5 0 0 1-.708.708L8 8.707l-5.146 5.147a.5.5 0 0 1-.708-.708L7.293 8 2.146 2.854Z"/></svg>
+            <button id="file-${file.id}-download" class="btn-action-primary" title="Download file" style="display: ${isMine ? 'none' : 'inline-flex'}">
+              <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/><path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/></svg>
+              <span>Download</span>
             </button>
             <button id="file-${file.id}-abort" class="btn-action-danger" title="Stop file download" style="display: none">
               <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M5.5 5.5A.5.5 0 0 1 6 6v4a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v4a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v4a.5.5 0 0 0 1 0V6z"/><path d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/></svg>
             </button>
-            <button id="file-${file.id}-download" class="btn-action-primary" title="Download file" style="display: ${isMine ? 'none' : 'inline-flex'}">
-              <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/><path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/></svg>
-              <span>Download</span>
+            <button id="file-${file.id}-remove" class="btn-action-danger" title="Remove file" style="display: ${isMine ? 'inline-flex' : 'none'}">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M2.146 2.854a.5.5 0 1 1 .708-.708L8 7.293l5.146-5.147a.5.5 0 0 1 .708.708L8.707 8l5.147 5.146a.5.5 0 0 1-.708.708L8 8.707l-5.146 5.147a.5.5 0 0 1-.708-.708L7.293 8 2.146 2.854Z"/></svg>
+            </button>
+            <!-- Advanced Progressive Disclosure Toggle -->
+            <button id="file-${file.id}-toggle-advanced" class="btn-action-ghost" type="button" title="Advanced details & hash" aria-expanded="false">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                <path d="M9.5 13a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm0-5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm0-5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0z"/>
+              </svg>
             </button>
           </div>
         </div>
@@ -1838,6 +1844,30 @@ export class User {
           </div>
         </div>
 
+        <!-- PROGRESSIVE DISCLOSURE ADVANCED DRAWER -->
+        <div id="file-${file.id}-advanced" class="file-advanced-drawer" style="display: none;">
+          <div class="file-advanced-grid">
+            <div class="file-advanced-item">
+              <span class="file-advanced-label">Network Topology:</span>
+              <span id="file-${file.id}-telemetry" class="file-telemetry-badge-wrap"></span>
+            </div>
+            <div class="file-advanced-item">
+              <span class="file-advanced-label">SHA-256 Digest:</span>
+              <code id="file-${file.id}-hash-code" class="file-advanced-hash">Computing...</code>
+              <button id="file-${file.id}-hash-copy-btn" class="btn-micro" type="button" style="display:none;" title="Copy full SHA-256 hash">Copy</button>
+            </div>
+            ${isMine ? `
+            <div class="file-advanced-item file-advanced-full">
+              <span class="file-advanced-label">Transfer Analytics:</span>
+              <button id="file-${file.id}-details" class="btn-glass btn-sm" type="button" style="font-size: 0.78rem; padding: 3px 10px;">
+                <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/><path d="m8.93 6.588-2.29.287-.082.38.45.083c.294.07.352.176.288.469l-.738 3.468c-.194.897.105 1.319.808 1.319.545 0 1.178-.252 1.465-.598l.088-.416c-.2.176-.492.246-.686.246-.275 0-.375-.193-.304-.533L8.93 6.588zM9 4.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/></svg>
+                <span>Peer Status Table</span>
+              </button>
+            </div>` : `
+            <button id="file-${file.id}-details" style="display:none;"></button>`}
+          </div>
+        </div>
+
         <div id="file-${file.id}-error" class="file-error-banner" style="display:none"></div>
       </div>
     `
@@ -1849,6 +1879,31 @@ export class User {
     on(`file-${file.id}-remove`, () => this.removeFile(file.id));
     on(`file-${file.id}-abort`, () => this.abortFile(file.id));
     on(`file-${file.id}-download`, () => this.downloadFile(file.id));
+    on(`file-${file.id}-toggle-advanced`, () => {
+      const drawer = document.getElementById(`file-${file.id}-advanced`);
+      const btn = document.getElementById(`file-${file.id}-toggle-advanced`);
+      if (!drawer) return;
+      const isHidden = drawer.style.display === 'none';
+      drawer.style.display = isHidden ? 'block' : 'none';
+      btn?.setAttribute('aria-expanded', isHidden ? 'true' : 'false');
+      btn?.classList.toggle('active', isHidden);
+    });
+    on(`file-${file.id}-hash-copy-btn`, () => {
+      const h = document.getElementById(`file-${file.id}-hash-code`)?.textContent;
+      if (h && h !== 'Computing...') {
+        if (navigator.clipboard && window.isSecureContext) {
+          navigator.clipboard.writeText(h);
+        } else {
+          const ta = document.createElement('textarea');
+          ta.value = h;
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+        }
+        showToast('SHA-256 hash copied.');
+      }
+    });
     on(`file-${file.id}-verified`, () => {
       const badge = document.getElementById(`file-${file.id}-verified`);
       const hash = badge?.dataset?.hash || file.hash;
@@ -1867,6 +1922,10 @@ export class User {
         verifiedBadge.dataset.hash = file.hash;
         verifiedBadge.title = `SHA-256: ${file.hash}\nClick to inspect`;
       }
+      const hashCode = document.getElementById(`file-${file.id}-hash-code`);
+      const copyBtn = document.getElementById(`file-${file.id}-hash-copy-btn`);
+      if (hashCode) hashCode.textContent = file.hash;
+      if (copyBtn) copyBtn.style.display = 'inline-flex';
     }
 
     // Insert user-controlled text safely (textContent never parses HTML).

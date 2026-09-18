@@ -3,6 +3,38 @@ export const dom = {
   theme_text: document.getElementById('theme-text'),
   about_text: document.getElementById('about-text'),
   join_room_btn: document.getElementById('join-room-btn'),
+  settings_menu_btn: document.getElementById('settings-menu-btn'),
+  settings_menu: document.getElementById('settings-menu'),
+  header_nearby_count: document.getElementById('header-nearby-count'),
+
+  // ACTION MODE SWITCHER
+  action_mode_nav: document.getElementById('action-mode-nav'),
+  mode_share_btn: document.getElementById('mode-share-btn'),
+  mode_join_btn: document.getElementById('mode-join-btn'),
+  mode_nearby_badge: document.getElementById('mode-nearby-badge'),
+
+  // UNIFIED JOIN VIEW
+  join_view: document.getElementById('join-view'),
+  join_view_close: document.getElementById('join-view-close'),
+
+  // ROOM CONNECT HUB TABS & PANELS
+  room_tab_code_btn: document.getElementById('room-tab-code-btn'),
+  room_tab_qr_btn: document.getElementById('room-tab-qr-btn'),
+  room_tab_security_btn: document.getElementById('room-tab-security-btn'),
+  room_panel_code: document.getElementById('room-panel-code'),
+  room_panel_qr: document.getElementById('room-panel-qr'),
+  room_panel_security: document.getElementById('room-panel-security'),
+  room_qr_canvas: document.getElementById('room-qr-canvas'),
+  room_password_input: document.getElementById('room-password-input'),
+  room_password_save_btn: document.getElementById('room-password-save-btn'),
+
+  // INLINE HOST NAME EDITING
+  host_name_display_wrap: document.getElementById('host-name-display-wrap'),
+  host_name_edit_wrap: document.getElementById('host-name-edit-wrap'),
+  host_name_edit_btn: document.getElementById('host-name-edit-btn'),
+  host_name_input: document.getElementById('host-name-input'),
+  host_name_save_btn: document.getElementById('host-name-save-btn'),
+  host_name_cancel_btn: document.getElementById('host-name-cancel-btn'),
 
   // NEARBY DISCOVERY BANNER
   nearby_banner: document.getElementById('nearby-banner'),

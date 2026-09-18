@@ -169,12 +169,21 @@ export async function registerServiceWorker() {
 // ---- FS Access sink -----------------------------------------------------------------
 
 async function openFsSink({ name, mime }) {
-  const handle = await window.showSaveFilePicker({
+  const options = {
     suggestedName: name,
-    types: mime
-      ? [{ description: 'File', accept: { [mime]: [extensionFromName(name)] } }]
-      : undefined,
-  });
+  };
+  // Avoid restrictive MIME types with arbitrary extensions (Chromium throws TypeError)
+  if (mime && mime !== 'application/octet-stream') {
+    const ext = extensionFromName(name);
+    if (ext) {
+      options.types = [{
+        description: 'File',
+        accept: { [mime]: [ext] },
+      }];
+    }
+  }
+
+  const handle = await window.showSaveFilePicker(options);
   const writable = await handle.createWritable();
   return {
     mode: 'fs',
@@ -194,104 +203,101 @@ function extensionFromName(name) {
 
 // ---- SW streaming sink --------------------------------------------------------------
 //
-// Bytes are staged into an OPFS file while the transfer runs; the browser download is
-// created only at close(), streaming the staged file into the Service Worker response.
-// A failed/interrupted transfer therefore never leaves a partial download behind, and
-// the staged file doubles as the resume buffer across reconnections.
+// Direct streaming download: Chunks flow immediately through a MessageChannel into
+// the Service Worker Response stream, directly writing to the browser's download manager.
+// Zero RAM overhead, zero OPFS quota limits, and support for multi-gigabyte files.
 
 async function openSwSink({ id, name, size, mime }) {
-  if (!navigator.storage || typeof navigator.storage.getDirectory !== 'function') {
-    throw new Error('OPFS is not available in this browser.');
-  }
-  const root = await navigator.storage.getDirectory();
-  const stagingName = `filesync-part-${id}`;
-  // Leftover staging from an earlier session with this id is dead weight — drop it.
-  try { await root.removeEntry(stagingName); } catch {}
-  const handle = await root.getFileHandle(stagingName, { create: true });
-  const writable = await handle.createWritable();
+  const reg = sinkState.serviceWorkerRegistration;
+  const sw = reg && (reg.active || reg.waiting || reg.installing);
+  if (!sw) throw new Error('Service Worker not available.');
 
-  const cleanupStaging = () => {
-    setTimeout(() => { root.removeEntry(stagingName).catch(() => {}); }, 30_000);
-  };
+  const channel = new MessageChannel();
+  let sinkRef = null;
+  const ready = new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error('Service Worker did not respond.')), 5000);
+    channel.port1.onmessage = (ev) => {
+      if (ev.data?.type === 'ready') {
+        clearTimeout(timeout);
+        resolve();
+      } else if (ev.data?.type === 'cancel') {
+        if (sinkRef && typeof sinkRef._onCancel === 'function') sinkRef._onCancel();
+      }
+    };
+  });
 
-  // Stream the staged file into a fresh SW download. Runs once, at completion.
-  const deliver = async () => {
-    await writable.close();
-    const reg = sinkState.serviceWorkerRegistration;
-    const sw = reg && (reg.active || reg.waiting || reg.installing);
-    if (!sw) throw new Error('Service Worker not available.');
+  (reg.active || sw).postMessage(
+    { type: 'register', id, name, size, mime, port: channel.port2 },
+    [channel.port2],
+  );
+  await ready;
 
-    const channel = new MessageChannel();
-    let sinkRef = null;
-    const ready = new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error('Service Worker did not respond.')), 5000);
-      channel.port1.onmessage = (ev) => {
-        if (ev.data?.type === 'ready') {
-          clearTimeout(timeout);
-          resolve();
-        } else if (ev.data?.type === 'cancel') {
-          // User cancelled the browser download — call this sink's onCancel hook (if any).
-          if (sinkRef && typeof sinkRef._onCancel === 'function') sinkRef._onCancel();
-        }
-      };
-    });
+  // Trigger the download by navigating a hidden iframe to the intercepted URL.
+  const iframe = document.createElement('iframe');
+  iframe.hidden = true;
+  iframe.src = `/__download/${encodeURIComponent(id)}`;
+  document.body.appendChild(iframe);
 
-    (reg.active || sw).postMessage(
-      { type: 'register', id, name, size, mime, port: channel.port2 },
-      [channel.port2],
-    );
-    await ready;
+  const port = channel.port1;
 
-    // Trigger the download by navigating a hidden iframe to the intercepted URL.
-    const iframe = document.createElement('iframe');
-    iframe.hidden = true;
-    iframe.src = `/__download/${encodeURIComponent(id)}`;
-    document.body.appendChild(iframe);
-
-    const port = channel.port1;
-    const stagedFile = await handle.getFile();
-    const reader = stagedFile.stream().getReader();
-    for (;;) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      const buf = value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength);
-      port.postMessage(buf, [buf]);
-    }
-    port.postMessage({ type: 'end' });
-    port.close();
-    setTimeout(() => iframe.remove(), 1000);
-    cleanupStaging();
-  };
-
-  return {
+  sinkRef = {
     mode: 'sw',
-    // Callers (user.downloadFile / user.downloadAll) assign a callback here so that a
-    // browser-side cancel aborts the transfer instead of leaving it running.
     _onCancel: null,
-    async write(chunk) { await writable.write(chunk); },
-    async truncate0() { await writable.truncate(0); },
-    async close() { await deliver(); },
+    async write(chunk) {
+      const buf = chunk.buffer.slice(chunk.byteOffset, chunk.byteOffset + chunk.byteLength);
+      port.postMessage(buf, [buf]);
+    },
+    async truncate0() {},
+    async close() {
+      port.postMessage({ type: 'end' });
+      port.close();
+      setTimeout(() => iframe.remove(), 5000);
+    },
     async abort(reason) {
-      try { await writable.close(); } catch {}
-      try { await root.removeEntry(stagingName); } catch {}
+      try { port.postMessage({ type: 'abort', reason }); } catch {}
+      port.close();
+      setTimeout(() => iframe.remove(), 1000);
     },
   };
+
+  return sinkRef;
 }
 
 // ---- Blob (legacy) sink -------------------------------------------------------------
+//
+// Optimized for memory efficiency by batching incoming chunks into 8MB sub-blobs,
+// avoiding huge flat arrays of thousands of Uint8Array allocations in the JS heap.
 
 function openBlobSink({ name, mime }) {
-  const chunks = [];
+  const blobParts = [];
+  const currentBatch = [];
+  let currentBatchSize = 0;
+  const BATCH_SIZE = 8 * 1024 * 1024; // 8 MB
+
   return {
     mode: 'blob',
     async write(chunk) {
-      // Copy into a stable Uint8Array reference (the caller may reuse the buffer).
-      chunks.push(new Uint8Array(chunk));
+      const copy = new Uint8Array(chunk);
+      currentBatch.push(copy);
+      currentBatchSize += copy.byteLength;
+      if (currentBatchSize >= BATCH_SIZE) {
+        blobParts.push(new Blob(currentBatch));
+        currentBatch.length = 0;
+        currentBatchSize = 0;
+      }
     },
-    async truncate0() { chunks.length = 0; },
+    async truncate0() {
+      blobParts.length = 0;
+      currentBatch.length = 0;
+      currentBatchSize = 0;
+    },
     async close() {
-      const blob = new Blob(chunks, mime ? { type: mime } : undefined);
-      chunks.length = 0;
+      if (currentBatch.length > 0) {
+        blobParts.push(new Blob(currentBatch));
+        currentBatch.length = 0;
+      }
+      const blob = new Blob(blobParts, mime ? { type: mime } : undefined);
+      blobParts.length = 0;
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -302,7 +308,9 @@ function openBlobSink({ name, mime }) {
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
     },
     async abort() {
-      chunks.length = 0;
+      blobParts.length = 0;
+      currentBatch.length = 0;
+      currentBatchSize = 0;
     },
   };
 }
