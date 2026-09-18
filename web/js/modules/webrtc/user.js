@@ -5,9 +5,8 @@ import { File } from './file.js';
 import { Peer } from './peer.js';
 import { openSink } from '../sink.js';
 import { downloadZip } from '../../vendors/client-zip.min.js';
-import { soundFileDrop, soundPeerJoin, soundPeerLeave } from '../sound.js';
+import { soundFileDrop } from '../sound.js';
 import { computeSha256 } from '../crypto.js';
-import { inspectPeerConnection, renderTelemetryBadge } from '../telemetry.js';
 
 export function getIdenticonSVG(seed = '', size = 18) {
   let hash = 0;
@@ -489,12 +488,26 @@ export class User {
       // Add file to the list
       this._addFileUI(f)
 
+      // Pre-compute SHA-256 hash immediately for data integrity
+      if (file) {
+        computeSha256(file).then((h) => {
+          f.hash = h;
+          const badge = document.getElementById(`file-${f.id}-verified`);
+          if (badge && h) {
+            badge.style.display = 'inline-flex';
+            badge.dataset.hash = h;
+            badge.title = `SHA-256: ${h}\nClick to view full checksum`;
+          }
+        }).catch(() => {});
+      }
+
       // Store file to be send to other peers
       data.push({"id": f.id, "name": f.name, "size": f.size, "owner_id": f.owner_id, "owner_name": f.owner_name})
     }
 
-    // Show toast for added files
+    // Play acoustic feedback and show toast for added files
     if (data.length > 0) {
+      soundFileDrop();
       const msg = data.length === 1
         ? `File "${data[0].name}" added.`
         : `${data.length} files added.`
