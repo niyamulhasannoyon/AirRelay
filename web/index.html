@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <title>AirRelay | Real-Time Peer-to-Peer File Transfer</title>
     <meta name="description" content="Send files securely and directly from one device to many in real-time. Zero-install, encrypted WebRTC P2P file transfers across Mac, Windows, Linux, iOS, and Android.">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <link rel="icon" type="image/png" href="assets/icon.png">
     <link rel="apple-touch-icon" href="assets/icon.png">
     <link rel="manifest" href="manifest.webmanifest">
@@ -36,7 +36,15 @@
       </div>
 
       <div class="nav-actions">
-        <button id="install-pwa-btn" class="btn-glass" type="button" style="display:none;" title="Install AirRelay App">
+        <button id="join-room-btn" class="btn-glass btn-join-accent" type="button" title="Join another room via 6-digit code or link" aria-label="Join Room">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
+            <path d="M4.715 6.542 3.343 7.914a3 3 0 1 0 4.243 4.243l1.828-1.829A3 3 0 0 0 8.586 5.5L8 6.086a1 1 0 0 0-.154.199 2 2 0 0 1 .861 3.337L6.88 11.45a2 2 0 1 1-2.83-2.83l.793-.792a4 4 0 0 1-.128-1.287z"/>
+            <path d="M6.586 1A2 2 0 0 0 5 2.5a2 2 0 0 0 .586 1.414l.793.793a4 4 0 0 1 .128 1.287l1.372-1.372a3 3 0 0 0-4.243-4.243L2.207 3.207A3 3 0 0 0 3.621 8.5l.586-.586a1 1 0 0 0 .154-.199 2 2 0 0 1-.861-3.337L5.32 2.55a2 2 0 1 1 2.83 2.83l-.793.792c.112.42.155.855.128 1.287l1.372-1.372A3 3 0 0 0 7.414 1z"/>
+          </svg>
+          <span>Join</span>
+        </button>
+
+        <button id="install-pwa-btn" class="btn-glass" type="button" style="display:none;" title="Install AirRelay App" aria-label="Install AirRelay App">
           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
             <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
             <path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/>
@@ -44,7 +52,7 @@
           <span>Install</span>
         </button>
 
-        <button id="sound-toggle-btn" class="btn-glass" type="button" title="Toggle Sound Cues">
+        <button id="sound-toggle-btn" class="btn-glass" type="button" title="Toggle Sound Cues" aria-label="Toggle Sound Cues">
           <svg id="sound-icon-on" xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
             <path d="M11.536 14.01A8.473 8.473 0 0 0 14.026 8a8.473 8.473 0 0 0-2.49-6.01l-.708.707A7.476 7.476 0 0 1 13.025 8c0 2.071-.84 3.946-2.197 5.303l.708.707z"/>
             <path d="M10.121 12.596A6.48 6.48 0 0 0 12.025 8a6.48 6.48 0 0 0-1.904-4.596l-.707.707A5.482 5.482 0 0 1 11.025 8a5.482 5.482 0 0 1-1.61 3.89l.706.706z"/>
@@ -56,7 +64,7 @@
           <span>Sound</span>
         </button>
 
-        <button id="shortcuts-btn" class="btn-glass" type="button" title="Keyboard Shortcuts (?)">
+        <button id="shortcuts-btn" class="btn-glass" type="button" title="Keyboard Shortcuts (?)" aria-label="Keyboard Shortcuts">
           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
             <path d="M14 3a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h12zM2 2a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H2z"/>
             <path d="M3 5h2v2H3V5zm3 0h2v2H6V5zm3 0h2v2H9V5zm3 0h1v2h-1V5zM3 8h1v2H3V8zm2 0h6v2H5V8zm7 0h1v2h-1V8z"/>
@@ -64,14 +72,14 @@
           <span>Keys</span>
         </button>
 
-        <button class="btn-glass" type="button" title="Switch Theme">
+        <button id="theme-toggle-btn" class="btn-glass" type="button" title="Switch Theme" aria-label="Switch Theme">
           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
             <path d="M8 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM8 0a.5.5 0 0 1 .5.5v2.5a.5.5 0 0 1-1 0v-2A.5.5 0 0 1 8 0zm0 13a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-1 0v-2A.5.5 0 0 1 8 13zm8-5a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1 0-1h2a.5.5 0 0 1 .5.5zM3 8a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1 0-1h2A.5.5 0 0 1 3 8zm10.657-5.657a.5.5 0 0 1 0 .707l-1.414 1.415a.5.5 0 1 1-.707-.708l1.414-1.414a.5.5 0 0 1 .707 0zm-9.193 9.193a.5.5 0 0 1 0 .707L3.05 13.657a.5.5 0 0 1-.707-.707l1.414-1.414a.5.5 0 0 1 .707 0zm9.193 2.121a.5.5 0 0 1-.707 0l-1.414-1.414a.5.5 0 0 1 .707-.707l1.414 1.414a.5.5 0 0 1 0 .707zM4.464 4.465a.5.5 0 0 1-.707 0L2.343 3.05a.5.5 0 1 1 .707-.707l1.414 1.414a.5.5 0 0 1 0 .708z"/>
           </svg>
           <span id="theme-text">Dark</span>
         </button>
 
-        <button class="btn-glass" type="button" title="About AirRelay">
+        <button id="about-btn" class="btn-glass" type="button" title="About AirRelay" aria-label="About AirRelay">
           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
             <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16"/>
             <path d="m8.93 6.588-2.29.287-.082.38.45.083c.294.07.352.176.288.469l-.738 3.468c-.194.897.105 1.319.808 1.319.545 0 1.178-.252 1.465-.598l.088-.416c-.2.176-.492.246-.686.246-.275 0-.375-.193-.304-.533zM9 4.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0"/>
@@ -79,7 +87,7 @@
           <span id="about-text">About</span>
         </button>
 
-        <a href="/admin" class="btn-glass" title="AirRelay Admin Panel" style="text-decoration: none;">
+        <a href="/admin/" class="btn-glass" title="AirRelay Admin Panel" aria-label="AirRelay Admin Panel" style="text-decoration: none;">
           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
             <path d="M8 1a2 2 0 0 1 2 2v4H6V3a2 2 0 0 1 2-2zm3 6V3a3 3 0 0 0-6 0v4a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/>
           </svg>
@@ -95,6 +103,29 @@
           Ultra-fast, zero-install peer-to-peer file sharing across any device.
         </h2>
       </div>
+
+      <!-- NEARBY DEVICE DISCOVERY BANNER (AIRDROP STYLE) -->
+      <section id="nearby-banner" class="glass-panel p-3 mb-4 nearby-room-banner" style="display: none;">
+        <div class="nearby-banner-content">
+          <div class="nearby-banner-icon-wrap">
+            <span class="nearby-pulse-radar"></span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 16 16">
+              <path d="M15.384 6.115a.485.485 0 0 0-.047-.736A12.444 12.444 0 0 0 8 3C5.259 3 2.723 3.882.663 5.379a.485.485 0 0 0-.048.736.518.518 0 0 0 .668.05A11.448 11.448 0 0 1 8 4c2.507 0 4.827.802 6.716 2.164.205.148.49.13.668-.049z"/>
+              <path d="M13.229 8.271a.482.482 0 0 0-.063-.745A9.455 9.455 0 0 0 8 6c-1.905 0-3.68.56-5.166 1.526a.48.48 0 0 0-.063.745.525.525 0 0 0 .652.065A8.46 8.46 0 0 1 8 7a8.46 8.46 0 0 1 4.576 1.336c.206.132.48.108.653-.065zm-2.183 2.183c.226-.226.185-.605-.1-.75A6.473 6.473 0 0 0 8 9c-1.06 0-2.062.254-2.946.704-.285.145-.326.524-.1.75l.015.015c.16.16.407.19.611.09A5.478 5.478 0 0 1 8 10c.868 0 1.69.201 2.42.56.203.1.45.07.61-.091l.016-.015zM9.06 12.44c.196-.196.198-.52-.04-.66A1.99 1.99 0 0 0 8 11.5a1.99 1.99 0 0 0-1.02.28c-.238.14-.236.464-.04.66l.706.706a.5.5 0 0 0 .707 0l.707-.707z"/>
+            </svg>
+          </div>
+          <div class="nearby-banner-text">
+            <span class="nearby-title">Nearby Device Detected</span>
+            <span id="nearby-banner-desc" class="nearby-desc">A device is sharing files on your network</span>
+          </div>
+          <div class="nearby-banner-actions">
+            <button id="nearby-banner-join" class="btn-primary-pill btn-sm" type="button">
+              <span>Connect Instantly ⚡</span>
+            </button>
+            <button id="nearby-banner-dismiss" class="btn-icon-ghost" type="button" title="Dismiss" aria-label="Dismiss">✕</button>
+          </div>
+        </div>
+      </section>
 
       <!-- ABOUT PANEL -->
       <section id="about-div" class="glass-panel p-4 mb-4" style="display: none;">
@@ -143,9 +174,14 @@
 
       <!-- CONNECTING TO ROOM -->
       <section id="connect-div" class="glass-panel p-4 mb-4 text-center" style="display: none;">
-        <div class="spinner-border text-primary" style="width: 2rem; height: 2rem; border-width: 0.18em; margin-bottom: 12px;" role="status"></div>
-        <p style="color: var(--text-primary); font-size: 1rem; font-weight: 600; margin: 0;">Connecting to room...</p>
-        <p style="color: var(--text-muted); font-size: 0.85rem; margin: 4px 0 0;">Establishing secure peer-to-peer session</p>
+        <div class="spinner-border text-primary" style="width: 2.2rem; height: 2.2rem; border-width: 0.18em; margin-bottom: 14px;" role="status"></div>
+        <p id="connect-status-title" style="color: var(--text-primary); font-size: 1.05rem; font-weight: 600; margin: 0;">Connecting to room...</p>
+        <p id="connect-status-desc" style="color: var(--text-muted); font-size: 0.85rem; margin: 4px 0 16px;">Establishing secure peer-to-peer session</p>
+        <div>
+          <button id="connect-cancel-btn" class="btn-glass" type="button" style="font-size: 0.82rem; padding: 6px 18px;">
+            <span>Cancel</span>
+          </button>
+        </div>
       </section>
 
       <!-- PASSWORD PROMPT -->
@@ -239,20 +275,40 @@
             </div>
           </div>
 
-          <!-- ROOM URL ROW -->
-          <div id="transfer-url-row" class="room-link-box" title="Click to copy room link">
-            <span id="transfer-url-value" class="room-link-url"></span>
-            <div class="room-link-actions">
-              <span id="transfer-url-copy" class="btn-action-icon" title="Copy URL">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
-                  <path fill-rule="evenodd" d="M4 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zm2-1a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1zM2 5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1h1v1a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h1v1z"/>
-                </svg>
-              </span>
-              <span id="transfer-url-success" class="btn-action-icon" style="display: none; color: var(--status-success);" title="Copied!">
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 16 16">
-                  <path d="M12.736 3.97a.733.733 0 0 1 1.047 0c.286.289.29.756.01 1.05L7.88 12.01a.733.733 0 0 1-1.065.02L3.217 8.384a.757.757 0 0 1 0-1.06.733.733 0 0 1 1.047 0l3.052 3.093 5.4-6.425z"/>
-                </svg>
-              </span>
+          <!-- ROOM PAIRING ROW: QUICK 6-DIGIT CODE + ROOM URL -->
+          <div class="room-pairing-row">
+            <div id="room-code-badge" class="room-code-badge" title="Quick 6-Digit Code (Click to copy)">
+              <span class="room-code-label">QUICK CODE</span>
+              <div class="room-code-val-wrap">
+                <span id="room-code-val" class="room-code-text">··· ···</span>
+                <span id="room-code-copy-btn" class="room-code-copy-btn" title="Copy 6-Digit Code">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="currentColor" viewBox="0 0 16 16">
+                    <path fill-rule="evenodd" d="M4 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zm2-1a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1zM2 5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1h1v1a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h1v1z"/>
+                  </svg>
+                </span>
+                <span id="room-code-copied-btn" class="room-code-copy-btn" style="display: none; color: var(--status-success);" title="Copied!">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="currentColor" viewBox="0 0 16 16">
+                    <path d="M12.736 3.97a.733.733 0 0 1 1.047 0c.286.289.29.756.01 1.05L7.88 12.01a.733.733 0 0 1-1.065.02L3.217 8.384a.757.757 0 0 1 0-1.06.733.733 0 0 1 1.047 0l3.052 3.093 5.4-6.425z"/>
+                  </svg>
+                </span>
+              </div>
+            </div>
+
+            <!-- ROOM URL ROW -->
+            <div id="transfer-url-row" class="room-link-box" title="Click to copy room link">
+              <span id="transfer-url-value" class="room-link-url"></span>
+              <div class="room-link-actions">
+                <span id="transfer-url-copy" class="btn-action-icon" title="Copy URL">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                    <path fill-rule="evenodd" d="M4 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zm2-1a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1zM2 5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1h1v1a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h1v1z"/>
+                  </svg>
+                </span>
+                <span id="transfer-url-success" class="btn-action-icon" style="display: none; color: var(--status-success);" title="Copied!">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 16 16">
+                    <path d="M12.736 3.97a.733.733 0 0 1 1.047 0c.286.289.29.756.01 1.05L7.88 12.01a.733.733 0 0 1-1.065.02L3.217 8.384a.757.757 0 0 1 0-1.06.733.733 0 0 1 1.047 0l3.052 3.093 5.4-6.425z"/>
+                  </svg>
+                </span>
+              </div>
             </div>
           </div>
 
@@ -268,8 +324,8 @@
               <path d="M4.406 3.342A5.53 5.53 0 0 1 8 2c2.69 0 4.923 2 5.166 4.579C14.758 6.804 16 8.137 16 9.773 16 11.569 14.502 13 12.687 13H3.781C1.708 13 0 11.366 0 9.318c0-1.763 1.266-3.223 2.942-3.593.143-.863.698-1.723 1.464-2.383m.653.757c-.757.653-1.153 1.44-1.153 2.056v.448l-.445.049C2.064 6.805 1 7.952 1 9.318 1 10.785 2.23 12 3.781 12h8.906C13.98 12 15 10.988 15 9.773c0-1.216-1.02-2.228-2.313-2.228h-.5v-.5C12.188 4.825 10.328 3 8 3a4.53 4.53 0 0 0-2.941 1.1z"/>
             </svg>
           </div>
-          <h3 class="dropzone-title">Drop files here to share</h3>
-          <p class="dropzone-subtext">or browse files from your device · End-to-end direct transfer</p>
+          <h3 class="dropzone-title">Tap or drop files here to share</h3>
+          <p class="dropzone-subtext">Browse from your device · Direct end-to-end P2P transfer</p>
           <button id="transfer-select-file" class="btn-primary-pill" type="button">
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 16 16">
               <path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/>
@@ -362,11 +418,15 @@
             <h5 style="margin: 0; font-size: 1.15rem; font-weight: 600; color: var(--text-primary);">Scan to Connect</h5>
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
           </div>
-          <div style="background: #ffffff; padding: 16px; border-radius: 16px; display: inline-block; margin: 0 auto 16px; box-shadow: var(--shadow-md);">
+          <div style="background: #ffffff; padding: 16px; border-radius: 16px; display: inline-block; margin: 0 auto 14px; box-shadow: var(--shadow-md);">
             <canvas id="qr-modal-canvas"></canvas>
           </div>
+          <div id="qr-modal-code-wrap" style="margin-bottom: 14px; background: var(--glass-bg-subtle); border: 1px solid var(--glass-border); border-radius: var(--radius-md); padding: 8px 16px; display: inline-flex; align-items: center; justify-content: center; gap: 10px;">
+            <span style="font-size: 0.78rem; text-transform: uppercase; color: var(--text-muted); font-weight: 600; letter-spacing: 0.05em;">Quick Code:</span>
+            <span id="qr-modal-code-val" style="font-family: var(--font-mono); font-size: 1.2rem; font-weight: 700; color: var(--accent-cyan); letter-spacing: 0.08em;">··· ···</span>
+          </div>
           <p style="font-size: 0.85rem; color: var(--text-secondary); margin: 0 0 16px;">
-            Scan with your smartphone camera to join this room instantly.
+            Scan with your smartphone camera or enter the Quick Code to join instantly.
           </p>
           <button type="button" class="btn-glass w-100 justify-content-center" data-bs-dismiss="modal">Close</button>
         </div>
@@ -445,7 +505,7 @@
             <div id="file-modal-table-empty" style="display: none; color: var(--text-muted); text-align: center; padding: 24px 0;">
               <p style="margin: 0; font-size: 0.9rem;">This file has not been requested by any peers yet.</p>
             </div>
-            <div id="file-modal-table-wrap" style="display: none; border: 1px solid var(--glass-border); border-radius: var(--radius-md); overflow: hidden;">
+            <div id="file-modal-table-wrap" class="table-responsive" style="display: none; border: 1px solid var(--glass-border); border-radius: var(--radius-md); overflow-x: auto; -webkit-overflow-scrolling: touch;">
               <table id="file-modal-table" class="table table-hover" style="margin-bottom: 0;">
                 <thead>
                   <tr>
@@ -531,6 +591,105 @@
       </div>
     </div>
 
+    <!-- JOIN ROOM MODAL -->
+    <div id="join-modal" class="modal fade" tabindex="-1">
+      <div class="modal-dialog modal-dialog-centered" style="max-width: 460px;">
+        <div class="modal-content glass-modal p-4">
+          <div class="modal-header border-0 p-0 mb-3" style="display: flex; justify-content: space-between; align-items: center;">
+            <h5 style="color: var(--text-primary); margin: 0; font-weight: 600; display: flex; align-items: center; gap: 8px;">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="var(--accent-primary)" viewBox="0 0 16 16">
+                <path d="M15.384 6.115a.485.485 0 0 0-.047-.736A12.444 12.444 0 0 0 8 3C5.259 3 2.723 3.882.663 5.379a.485.485 0 0 0-.048.736.518.518 0 0 0 .668.05A11.448 11.448 0 0 1 8 4c2.507 0 4.827.802 6.716 2.164.205.148.49.13.668-.049z"/>
+                <path d="M13.229 8.271a.482.482 0 0 0-.063-.745A9.455 9.455 0 0 0 8 6c-1.905 0-3.68.56-5.166 1.526a.48.48 0 0 0-.063.745.525.525 0 0 0 .652.065A8.46 8.46 0 0 1 8 7a8.46 8.46 0 0 1 4.576 1.336c.206.132.48.108.653-.065zm-2.183 2.183c.226-.226.185-.605-.1-.75A6.473 6.473 0 0 0 8 9c-1.06 0-2.062.254-2.946.704-.285.145-.326.524-.1.75l.015.015c.16.16.407.19.611.09A5.478 5.478 0 0 1 8 10c.868 0 1.69.201 2.42.56.203.1.45.07.61-.091l.016-.015zM9.06 12.44c.196-.196.198-.52-.04-.66A1.99 1.99 0 0 0 8 11.5a1.99 1.99 0 0 0-1.02.28c-.238.14-.236.464-.04.66l.706.706a.5.5 0 0 0 .707 0l.707-.707z"/>
+              </svg>
+              <span>Connect to Room</span>
+            </h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+
+          <!-- TAB CONTROLS -->
+          <div class="join-nav-tabs mb-4">
+            <button id="join-tab-code" class="join-nav-tab active" type="button">Quick Code</button>
+            <button id="join-tab-nearby" class="join-nav-tab" type="button">
+              <span>Nearby</span>
+              <span id="join-nearby-badge" class="join-tab-badge" style="display: none;">0</span>
+            </button>
+            <button id="join-tab-scanner" class="join-nav-tab" type="button">Scan QR</button>
+          </div>
+
+          <!-- TAB 1: QUICK CODE -->
+          <div id="join-panel-code" class="join-tab-pane">
+            <p style="font-size: 0.86rem; color: var(--text-secondary); text-align: center; margin-bottom: 20px;">
+              Enter the 6-digit code shown on the host device:
+            </p>
+
+            <div class="digit-inputs-group mb-3">
+              <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" class="digit-box" data-index="0" autocomplete="off">
+              <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" class="digit-box" data-index="1" autocomplete="off">
+              <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" class="digit-box" data-index="2" autocomplete="off">
+              <span class="digit-dash">-</span>
+              <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" class="digit-box" data-index="3" autocomplete="off">
+              <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" class="digit-box" data-index="4" autocomplete="off">
+              <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" class="digit-box" data-index="5" autocomplete="off">
+            </div>
+
+            <div id="join-error-msg" class="text-center" style="display: none; color: var(--status-danger); font-size: 0.85rem; margin-bottom: 14px;"></div>
+            <div id="join-loading" class="text-center mb-3" style="display: none;">
+              <div class="spinner-border text-primary" style="width: 1.5rem; height: 1.5rem; border-width: 0.16em;" role="status"></div>
+              <p style="font-size: 0.82rem; color: var(--text-secondary); margin: 6px 0 0;">Connecting...</p>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 12px; margin: 16px 0 14px;">
+              <hr style="flex: 1; border-color: var(--glass-border); margin: 0;">
+              <span style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;">Or Direct Link / ID</span>
+              <hr style="flex: 1; border-color: var(--glass-border); margin: 0;">
+            </div>
+
+            <div class="input-group">
+              <input id="join-manual-input" type="text" class="form-control" placeholder="Paste room link or code (e.g. abc-def-ghi)" style="border-radius: var(--radius-md) 0 0 var(--radius-md); font-size: 0.88rem;">
+              <button id="join-manual-btn" class="btn-primary-pill" type="button" style="border-radius: 0 var(--radius-md) var(--radius-md) 0; padding: 6px 18px; font-size: 0.88rem;">
+                <span>Join</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- TAB 2: NEARBY DEVICES -->
+          <div id="join-panel-nearby" class="join-tab-pane" style="display: none;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+              <span style="font-size: 0.85rem; color: var(--text-secondary);">Devices on your local network:</span>
+              <button id="join-nearby-refresh" class="btn-glass" type="button" style="font-size: 0.78rem; padding: 3px 10px;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 16 16">
+                  <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2z"/>
+                  <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466"/>
+                </svg>
+                <span>Refresh</span>
+              </button>
+            </div>
+
+            <div id="join-nearby-list" class="join-nearby-container">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+
+          <!-- TAB 3: SCAN QR -->
+          <div id="join-panel-scanner" class="join-tab-pane" style="display: none;">
+            <div class="scanner-viewport-wrap mb-3">
+              <video id="join-scanner-video" playsinline muted autoplay class="scanner-video"></video>
+              <div class="scanner-reticle">
+                <span class="scanner-corner tl"></span>
+                <span class="scanner-corner tr"></span>
+                <span class="scanner-corner bl"></span>
+                <span class="scanner-corner br"></span>
+                <div class="scanner-laser"></div>
+              </div>
+            </div>
+            <p id="join-scanner-status" style="font-size: 0.84rem; color: var(--text-secondary); text-align: center; margin: 0;">
+              Point camera at AirRelay QR code
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- FILE CHECKSUM & INTEGRITY MODAL -->
     <div id="checksum-modal" class="modal fade" tabindex="-1">
       <div class="modal-dialog modal-dialog-centered" style="max-width: 500px;">
@@ -597,6 +756,10 @@
               <div class="shortcut-row">
                 <span class="shortcut-desc">Open QR code modal</span>
                 <span class="shortcut-keys"><kbd>Q</kbd></span>
+              </div>
+              <div class="shortcut-row">
+                <span class="shortcut-desc">Join room (Quick Code)</span>
+                <span class="shortcut-keys"><kbd>J</kbd></span>
               </div>
               <div class="shortcut-row">
                 <span class="shortcut-desc">Show keyboard shortcuts</span>

@@ -11,6 +11,7 @@ import {
 import {
   bufToHex,
   computeSha256,
+  generateUUID,
   shortHash,
   verifyChecksum,
 } from '../../web/js/modules/crypto.js';
@@ -177,6 +178,14 @@ test('crypto engine: verifyChecksum performs constant-time integrity validation'
   assert.equal(verifyChecksum(hash1, 'truncated'), false);
   assert.equal(verifyChecksum(null, hash1), false);
   assert.equal(verifyChecksum(hash1, undefined), false);
+});
+
+test('crypto engine: generateUUID produces valid UUIDv4 strings', () => {
+  const uuid1 = generateUUID();
+  const uuid2 = generateUUID();
+  assert.equal(typeof uuid1, 'string');
+  assert.match(uuid1, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+  assert.notEqual(uuid1, uuid2);
 });
 
 test('sound engine: controls and safe execution in non-audio environments', () => {

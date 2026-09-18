@@ -1,7 +1,7 @@
 import { turn } from './turn.js';
 import { applyIceMode } from './mode.js';
 import { Peer } from './peer.js';
-import { computeSha256 } from '../crypto.js';
+import { computeSha256, generateUUID } from '../crypto.js';
 import { inspectPeerConnection, renderTelemetryBadge } from '../telemetry.js';
 import { acquireWakeLock, releaseWakeLock } from '../wakelock.js';
 import { soundTransferComplete, soundError } from '../sound.js';
@@ -192,8 +192,8 @@ export class File {
       throw err;
     }
 
-    // UUID fetch is a normal await — its rejection propagates out of init naturally.
-    const uuid = await this._getUUID();
+    // UUID generated instantly without network fetch
+    const uuid = generateUUID();
 
     await new Promise((resolve, reject) => {
       // Create a new Peer instance
@@ -1034,9 +1034,6 @@ export class File {
   }
 
   async _getUUID() {
-    const response = await fetch(`/api/uuid`);
-    if (!response.ok) throw new Error(`uuid endpoint failed: HTTP ${response.status}`);
-    const data = await response.json();
-    return data['uuid'];
+    return generateUUID();
   }
 }

@@ -6,7 +6,7 @@ import { Peer } from './peer.js';
 import { openSink } from '../sink.js';
 import { downloadZip } from '../../vendors/client-zip.min.js';
 import { soundFileDrop, soundPeerJoin, soundPeerLeave } from '../sound.js';
-import { computeSha256 } from '../crypto.js';
+import { computeSha256, generateUUID } from '../crypto.js';
 import { inspectPeerConnection, renderTelemetryBadge } from '../telemetry.js';
 
 export function getIdenticonSVG(seed = '', size = 18) {
@@ -157,6 +157,7 @@ export class User {
   _peer = null;
   _remotePeers = _makeWireMap();
   _room_id;
+  _code = '';
   _isHost;
   _files = _makeWireMap();
   _status;
@@ -178,6 +179,14 @@ export class User {
 
   get name() {
     return this._name
+  }
+
+  get code() {
+    return this._code || (this._peer ? this._peer.code : '') || '';
+  }
+
+  set code(value) {
+    this._code = value;
   }
 
   get password() {
@@ -209,10 +218,10 @@ export class User {
     return hashHex;
   }
 
-  async init(peer_id = null) {
-    // Get UUID. A fetch failure here just propagates — caller (script.js onLoad)
-    // is responsible for showing the user-facing error.
-    if (peer_id == null) peer_id = await this._getUUID();
+  async init(peer_id = null, code = null) {
+    // Generate UUID locally without network roundtrip
+    if (peer_id == null) peer_id = generateUUID();
+    if (code) this._code = code;
 
     // Get ICE servers. Don't reach into the global error_div from here — let the
     // caller decide. Symmetric to file.init's contract after Round-3.
@@ -237,6 +246,7 @@ export class User {
           os: this._os,
           isHost: this._isHost,
           roomId: this._room_id || (this._isHost ? peer_id : ''),
+          code: this._code,
         },
       });
 
@@ -260,7 +270,8 @@ export class User {
       const settle = (cb, arg) => { if (settled) return; settled = true; cb(arg); };
 
       // Emitted when a connection to the PeerServer is established.
-      this._peer.on('open', () => {
+      this._peer.on('open', (id, assignedCode) => {
+        if (assignedCode) this._code = assignedCode;
         // Reset reconnect bookkeeping on every (re-)open. Only the first open
         // settles init; subsequent ones (reconnect after a blip) keep the existing
         // resolve a no-op.
@@ -1898,9 +1909,6 @@ export class User {
   }
 
   async _getUUID() {
-    const response = await fetch(`/api/uuid`);
-    if (!response.ok) throw new Error(`uuid endpoint failed: HTTP ${response.status}`);
-    const data = await response.json();
-    return data['uuid'];
+    return generateUUID();
   }
 }

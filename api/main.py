@@ -6,7 +6,7 @@ import base64
 import uuid
 import jwt
 from datetime import datetime, timedelta, timezone
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.signaling import router as signaling_router
@@ -64,6 +64,23 @@ async def health_check():
 @app.get("/uuid")
 async def uuid_check():
     return {"uuid": str(uuid.uuid4())}
+
+# Resolve room by 6-digit code or room slug/id
+@app.get("/rooms/resolve/{query}")
+async def resolve_room_endpoint(query: str):
+    from api.signaling import _REGISTRY
+    res = _REGISTRY.resolve_room(query)
+    if not res:
+        return {"found": False, "error": "Room not found or no longer active"}
+    return res
+
+# Discover active rooms on the same local IP / network
+@app.get("/rooms/nearby")
+async def nearby_rooms_endpoint(request: Request):
+    from api.signaling import _REGISTRY, _extract_client_ip
+    client_ip = _extract_client_ip(request)
+    rooms = _REGISTRY.get_nearby_rooms(client_ip)
+    return {"nearby_rooms": rooms}
 
 # Add credentials route
 @app.get("/credentials")

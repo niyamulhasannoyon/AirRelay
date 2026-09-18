@@ -2,6 +2,13 @@ export const dom = {
   // TOP BAR
   theme_text: document.getElementById('theme-text'),
   about_text: document.getElementById('about-text'),
+  join_room_btn: document.getElementById('join-room-btn'),
+
+  // NEARBY DISCOVERY BANNER
+  nearby_banner: document.getElementById('nearby-banner'),
+  nearby_banner_desc: document.getElementById('nearby-banner-desc'),
+  nearby_banner_join: document.getElementById('nearby-banner-join'),
+  nearby_banner_dismiss: document.getElementById('nearby-banner-dismiss'),
 
   // ABOUT
   about_div: document.getElementById('about-div'),
@@ -23,6 +30,9 @@ export const dom = {
 
   // CONNECT
   connect_div: document.getElementById('connect-div'),
+  connect_status_title: document.getElementById('connect-status-title'),
+  connect_status_desc: document.getElementById('connect-status-desc'),
+  connect_cancel_btn: document.getElementById('connect-cancel-btn'),
 
   // TRANSFER
   transfer_div: document.getElementById('transfer-div'),
@@ -31,6 +41,11 @@ export const dom = {
   transfer_status_protected: document.getElementById('transfer-status-protected'),
   transfer_status_wait: document.getElementById('transfer-status-wait'),
   transfer_status_success: document.getElementById('transfer-status-success'),
+
+  room_code_badge: document.getElementById('room-code-badge'),
+  room_code_val: document.getElementById('room-code-val'),
+  room_code_copy_btn: document.getElementById('room-code-copy-btn'),
+  room_code_copied_btn: document.getElementById('room-code-copied-btn'),
 
   transfer_url_value: document.getElementById('transfer-url-value'),
   transfer_url_copy: document.getElementById('transfer-url-copy'),
@@ -63,6 +78,26 @@ export const dom = {
   // QR MODAL
   qr_modal: document.getElementById('qr-modal'),
   qr_modal_canvas: document.getElementById('qr-modal-canvas'),
+  qr_modal_code_wrap: document.getElementById('qr-modal-code-wrap'),
+  qr_modal_code_val: document.getElementById('qr-modal-code-val'),
+
+  // JOIN ROOM MODAL
+  join_modal: document.getElementById('join-modal'),
+  join_tab_code: document.getElementById('join-tab-code'),
+  join_tab_nearby: document.getElementById('join-tab-nearby'),
+  join_tab_scanner: document.getElementById('join-tab-scanner'),
+  join_panel_code: document.getElementById('join-panel-code'),
+  join_panel_nearby: document.getElementById('join-panel-nearby'),
+  join_panel_scanner: document.getElementById('join-panel-scanner'),
+  join_nearby_badge: document.getElementById('join-nearby-badge'),
+  join_nearby_list: document.getElementById('join-nearby-list'),
+  join_nearby_refresh: document.getElementById('join-nearby-refresh'),
+  join_manual_input: document.getElementById('join-manual-input'),
+  join_manual_btn: document.getElementById('join-manual-btn'),
+  join_error_msg: document.getElementById('join-error-msg'),
+  join_loading: document.getElementById('join-loading'),
+  join_scanner_video: document.getElementById('join-scanner-video'),
+  join_scanner_status: document.getElementById('join-scanner-status'),
 
   // NAME MODAL
   name_modal: document.getElementById('name-modal'),
@@ -151,4 +186,10 @@ dom.password_modal?.addEventListener?.('shown.bs.modal', () => {
 // Focus the name input after the fade animation
 dom.name_modal?.addEventListener?.('shown.bs.modal', () => {
   dom.name_modal_value?.focus?.()
+});
+
+// Focus first digit box when join modal is shown
+dom.join_modal?.addEventListener?.('shown.bs.modal', () => {
+  const firstBox = document.querySelector('.digit-box');
+  firstBox?.focus?.();
 });

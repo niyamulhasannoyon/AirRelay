@@ -104,9 +104,14 @@ body {
   background-attachment: fixed;
   color: var(--admin-text-primary);
   min-height: 100vh;
+  min-height: 100dvh;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  -webkit-tap-highlight-color: transparent;
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 /* Glass panel utility */
@@ -129,7 +134,7 @@ body {
   backdrop-filter: var(--admin-glass-blur);
   -webkit-backdrop-filter: var(--admin-glass-blur);
   border-bottom: 1px solid var(--admin-glass-border);
-  padding: 14px 28px;
+  padding: max(14px, env(safe-area-inset-top, 14px)) 28px 14px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -309,6 +314,9 @@ body {
   max-width: 1520px;
   margin: 0 auto;
   padding: 24px;
+  padding-left: max(24px, env(safe-area-inset-left, 24px));
+  padding-right: max(24px, env(safe-area-inset-right, 24px));
+  padding-bottom: max(24px, env(safe-area-inset-bottom, 24px));
   display: flex;
   flex-direction: column;
   gap: 24px;
@@ -859,12 +867,6 @@ textarea.form-control {
   gap: 16px;
 }
 
-@media (max-width: 600px) {
-  .detail-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
 .detail-item {
   display: flex;
   flex-direction: column;
@@ -929,3 +931,279 @@ textarea.form-control {
 .audit-badge-info { background: rgba(59, 130, 246, 0.15); color: var(--admin-accent); }
 .audit-badge-warning { background: var(--admin-status-idle-bg); color: var(--admin-status-idle); }
 .audit-badge-danger { background: var(--admin-status-danger-bg); color: var(--admin-status-danger); }
+
+/* ==========================================================================
+   Admin Mobile Responsiveness & Viewport Adaptations
+   ========================================================================== */
+
+/* Medium screens & tablets (<= 992px) */
+@media (max-width: 992px) {
+  .admin-container {
+    padding: 18px 14px;
+    gap: 18px;
+  }
+
+  .admin-header {
+    padding: max(12px, env(safe-area-inset-top, 12px)) 18px 12px;
+  }
+
+  .kpi-grid {
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+  }
+}
+
+/* Small tablets and landscape phones (<= 768px) */
+@media (max-width: 768px) {
+  /* iOS Safari 16px rule for zero auto-zoom on input focus */
+  .form-control,
+  input[type="text"],
+  input[type="password"],
+  textarea,
+  select.admin-select {
+    font-size: 16px !important;
+  }
+
+  .admin-header {
+    padding: max(10px, env(safe-area-inset-top, 10px)) 14px 10px;
+    gap: 10px;
+  }
+
+  .brand-text p {
+    display: none;
+  }
+
+  .brand-text h1 {
+    font-size: 1.02rem;
+  }
+
+  .admin-badge {
+    font-size: 0.62rem;
+    padding: 1px 6px;
+  }
+
+  .brand-icon {
+    width: 32px;
+    height: 32px;
+  }
+
+  .header-status-pill {
+    padding: 4px 10px;
+    font-size: 0.75rem;
+    gap: 6px;
+  }
+
+  .header-actions {
+    gap: 6px;
+  }
+
+  .header-actions .admin-btn {
+    padding: 7px 10px;
+    min-height: 38px;
+    min-width: 38px;
+    justify-content: center;
+    touch-action: manipulation;
+  }
+
+  /* Collapse button text in navbar to sleek icon buttons */
+  .header-actions .admin-btn span {
+    display: none;
+  }
+
+  #refresh-interval-select {
+    padding: 5px 8px;
+    font-size: 0.76rem;
+    min-height: 38px;
+  }
+
+  .table-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  /* Horizontally scrollable native-feeling tab bar */
+  .nav-tabs-custom {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    flex-wrap: nowrap;
+    scrollbar-width: none;
+    padding: 3px;
+    gap: 4px;
+  }
+
+  .nav-tabs-custom::-webkit-scrollbar {
+    display: none;
+  }
+
+  .tab-btn {
+    white-space: nowrap;
+    flex-shrink: 0;
+    padding: 7px 14px;
+    font-size: 0.8rem;
+    min-height: 36px;
+    touch-action: manipulation;
+  }
+
+  .toolbar-filters {
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+    gap: 8px;
+  }
+
+  .search-input-wrap {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .search-input-wrap input {
+    padding: 9px 12px 9px 36px;
+  }
+
+  .toolbar-filters select {
+    width: 100%;
+    min-height: 40px;
+  }
+
+  .table-responsive {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .admin-table th,
+  .admin-table td {
+    padding: 8px 12px;
+    font-size: 0.78rem;
+  }
+}
+
+/* Smartphones (<= 600px) */
+@media (max-width: 600px) {
+  .admin-container {
+    padding: 12px 10px;
+    gap: 16px;
+  }
+
+  .advisory-banner {
+    padding: 10px 12px;
+    font-size: 0.78rem;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+
+  .kpi-card {
+    padding: 12px 10px;
+    gap: 6px;
+    border-radius: var(--admin-radius-md);
+  }
+
+  .kpi-title {
+    font-size: 0.68rem;
+    letter-spacing: 0.02em;
+  }
+
+  .kpi-icon-wrap {
+    width: 26px;
+    height: 26px;
+  }
+
+  .kpi-icon-wrap svg {
+    width: 13px;
+    height: 13px;
+  }
+
+  .kpi-value {
+    font-size: 1.35rem;
+  }
+
+  .kpi-subtext {
+    font-size: 0.68rem;
+  }
+
+  .chart-card {
+    padding: 14px;
+    gap: 12px;
+  }
+
+  .card-title {
+    font-size: 0.86rem;
+  }
+
+  .sparkline-container {
+    height: 130px;
+  }
+
+  .detail-grid {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .detail-item {
+    padding: 8px 10px;
+  }
+
+  .admin-modal-overlay {
+    padding: 12px;
+  }
+
+  .admin-modal-content {
+    padding: 16px;
+    border-radius: var(--admin-radius-md);
+    max-width: 100%;
+  }
+
+  .modal-header h3 {
+    font-size: 1rem;
+  }
+
+  .modal-footer {
+    flex-wrap: wrap;
+  }
+
+  .modal-footer .admin-btn {
+    flex: 1;
+    min-height: 42px;
+    justify-content: center;
+  }
+
+  .audit-list {
+    max-height: 380px;
+  }
+
+  .audit-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    padding: 8px 12px;
+  }
+
+  .admin-toast-container {
+    top: max(12px, env(safe-area-inset-top, 12px));
+    right: 12px;
+    left: 12px;
+  }
+
+  .admin-toast {
+    width: 100%;
+  }
+}
+
+/* Compact phones (<= 380px) */
+@media (max-width: 380px) {
+  .kpi-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .header-status-pill {
+    display: none;
+  }
+
+  .brand-text h1 {
+    font-size: 0.94rem;
+  }
+}

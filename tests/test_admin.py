@@ -197,30 +197,42 @@ class TestAdminAPI(unittest.TestCase):
         self.assertIn("session_id,peer_id", res_csv.text)
 
     def test_admin_frontend_routes(self):
-        # 1. /admin
+        # 1. /admin redirect without following redirects
+        res_admin_raw = self.client.get("/admin", follow_redirects=False)
+        self.assertEqual(res_admin_raw.status_code, 301)
+        self.assertEqual(res_admin_raw.headers.get("location"), "/admin/")
+
+        # 2. /admin following redirects
         res_admin = self.client.get("/admin")
         self.assertEqual(res_admin.status_code, 200)
         self.assertIn("Admin Console", res_admin.text)
+        self.assertIn('href="/admin/css/admin.css"', res_admin.text)
+        self.assertIn('src="/admin/js/admin.js"', res_admin.text)
 
-        # 2. /admin/
+        # 3. /admin/
         res_admin_slash = self.client.get("/admin/")
         self.assertEqual(res_admin_slash.status_code, 200)
         self.assertIn("Admin Console", res_admin_slash.text)
 
-        # 3. /admin/css/admin.css
+        # 4. /admin/css/admin.css
         res_css = self.client.get("/admin/css/admin.css")
         self.assertEqual(res_css.status_code, 200)
         self.assertIn("text/css", res_css.headers.get("content-type", ""))
 
-        # 4. /admin/js/admin.js
+        # 5. /admin/js/admin.js
         res_js = self.client.get("/admin/js/admin.js")
         self.assertEqual(res_js.status_code, 200)
         self.assertIn("application/javascript", res_js.headers.get("content-type", ""))
 
-        # 5. Root page has admin link
+        # 6. Global CSS and icon
+        res_global_css = self.client.get("/css/style.css")
+        self.assertEqual(res_global_css.status_code, 200)
+        self.assertIn("text/css", res_global_css.headers.get("content-type", ""))
+
+        # 7. Root page has admin link with trailing slash
         res_root = self.client.get("/")
         self.assertEqual(res_root.status_code, 200)
-        self.assertIn('href="/admin"', res_root.text)
+        self.assertIn('href="/admin/"', res_root.text)
 
 
 if __name__ == "__main__":

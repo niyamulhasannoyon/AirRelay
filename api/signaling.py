@@ -9,6 +9,7 @@ import logging
 import platform
 import resource
 import ipaddress
+import random
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -152,6 +153,7 @@ class PeerSession:
     name: str = ""
     role: str = "guest"         # "host", "guest", or "unknown"
     room_id: str = ""
+    code: str = ""              # 6-digit Quick Pair code (for hosts)
     connected_at: float = field(default_factory=time.time)
     last_seen: float = field(default_factory=time.monotonic)
     signals_sent: int = 0
@@ -184,6 +186,7 @@ class PeerSession:
 
         display_name = self.name.strip() if self.name else f"Peer {self.peer_id[:6]}"
         effective_room = self.room_id or (self.peer_id if self.role == "host" else "")
+        fmt_code = f"{self.code[:3]}-{self.code[3:]}" if len(self.code) == 6 else self.code
 
         return {
             "peer_id": self.peer_id,
@@ -191,6 +194,8 @@ class PeerSession:
             "name": display_name,
             "role": self.role,
             "room_id": effective_room,
+            "code": self.code,
+            "formatted_code": fmt_code,
             "ip": self.ip,
             "ip_type": self.ip_type,
             "os": self.os,
@@ -220,6 +225,7 @@ class _PeerRegistry:
     def __init__(self) -> None:
         self._peers: Dict[str, WebSocket] = {}
         self._sessions: Dict[str, PeerSession] = {}
+        self._code_to_peer: Dict[str, str] = {}
         self._history: deque[PeerSession] = deque(maxlen=500)
         self._events: deque[Dict[str, Any]] = deque(maxlen=300)
         self._event_counter: int = 0
@@ -229,6 +235,14 @@ class _PeerRegistry:
         self._peak_concurrent_connections: int = 0
         self._server_start_time: float = time.time()
         self._lock = asyncio.Lock()
+
+    def _generate_unique_code(self) -> str:
+        """Generate a random 6-digit numeric code not currently in use."""
+        for _ in range(100):
+            code = f"{random.randint(100000, 999999)}"
+            if code not in self._code_to_peer:
+                return code
+        return f"{random.randint(100000, 999999)}"
 
     def add_event(self, event_type: str, message: str, peer_id: Optional[str] = None, room_id: Optional[str] = None, severity: str = "info") -> Dict[str, Any]:
         """Record an event into the audit feed."""
@@ -253,6 +267,8 @@ class _PeerRegistry:
             displaced = self._peers.get(peer_id)
             old_session = self._sessions.get(peer_id)
             if old_session:
+                if old_session.code and old_session.code in self._code_to_peer:
+                    del self._code_to_peer[old_session.code]
                 old_session.disconnected_at = time.time()
                 old_session.disconnect_reason = "Replaced by a new registration"
                 old_session.close_code = _CLOSE_UNAVAILABLE_ID
@@ -260,6 +276,16 @@ class _PeerRegistry:
 
             self._peers[peer_id] = ws
             if session:
+                # Handle 6-digit code for host sessions
+                if session.role == "host":
+                    cand_code = "".join(filter(str.isdigit, session.code or ""))
+                    if len(cand_code) == 6 and cand_code not in self._code_to_peer:
+                        code = cand_code
+                    else:
+                        code = self._generate_unique_code()
+                    session.code = code
+                    self._code_to_peer[code] = peer_id
+
                 self._sessions[peer_id] = session
             self._total_connections_count += 1
             if len(self._peers) > self._peak_concurrent_connections:
@@ -270,8 +296,9 @@ class _PeerRegistry:
             proom = session.room_id if session and session.room_id else ""
             pos = session.os if session else "Unknown"
             pbr = session.browser if session else "Unknown"
+            pcode = f" [Code: {session.code}]" if session and session.code else ""
 
-            self.add_event("connect", f"Peer {peer_id[:8]} ({pname}) connected from {pip} [{pos} / {pbr}]", peer_id=peer_id, room_id=proom, severity="info")
+            self.add_event("connect", f"Peer {peer_id[:8]} ({pname}){pcode} connected from {pip} [{pos} / {pbr}]", peer_id=peer_id, room_id=proom, severity="info")
             return displaced
 
     async def unregister(self, peer_id: str, ws: WebSocket, reason: str = "Client disconnected", close_code: Optional[int] = None) -> None:
@@ -281,6 +308,8 @@ class _PeerRegistry:
                 del self._peers[peer_id]
                 session = self._sessions.pop(peer_id, None)
                 if session:
+                    if session.code and session.code in self._code_to_peer:
+                        del self._code_to_peer[session.code]
                     session.disconnected_at = time.time()
                     session.disconnect_reason = reason
                     session.close_code = close_code
@@ -326,9 +355,126 @@ class _PeerRegistry:
             session.os = env["os"]
         if "isHost" in metadata:
             session.role = "host" if metadata["isHost"] else "guest"
+            if session.role == "host" and not session.code:
+                session.code = self._generate_unique_code()
+                self._code_to_peer[session.code] = peer_id
         if "roomId" in metadata and isinstance(metadata["roomId"], str):
             session.room_id = metadata["roomId"][:64]
+        if "code" in metadata and isinstance(metadata["code"], str):
+            digits = "".join(filter(str.isdigit, metadata["code"]))
+            if len(digits) == 6:
+                if session.code and session.code in self._code_to_peer:
+                    del self._code_to_peer[session.code]
+                session.code = digits
+                self._code_to_peer[digits] = peer_id
         session.last_seen = time.monotonic()
+
+    def resolve_room(self, query: str) -> Optional[Dict[str, Any]]:
+        """Resolve a 6-digit code, room ID, or full room link to active room details."""
+        if not query:
+            return None
+
+        clean = query.strip()
+        # If user pasted a URL, extract the last path segment
+        if "/" in clean:
+            clean = clean.rstrip("/").split("/")[-1].strip()
+
+        # Check normalized 6-digit code
+        digits = "".join(filter(str.isdigit, clean))
+        target_peer_id = None
+        if len(digits) == 6 and digits in self._code_to_peer:
+            target_peer_id = self._code_to_peer[digits]
+
+        # Check by room_id or peer_id if not found by code
+        if not target_peer_id:
+            for pid, sess in self._sessions.items():
+                if sess.role == "host" and (sess.room_id == clean or pid == clean):
+                    target_peer_id = pid
+                    break
+
+        # Fallback check any session matching room_id
+        if not target_peer_id:
+            for pid, sess in self._sessions.items():
+                if sess.room_id == clean or pid == clean:
+                    target_peer_id = pid
+                    break
+
+        if not target_peer_id:
+            return None
+
+        host_sess = self._sessions.get(target_peer_id)
+        if not host_sess:
+            return None
+
+        effective_room = host_sess.room_id or (host_sess.peer_id if host_sess.role == "host" else target_peer_id)
+        # Count total members in room
+        members = sum(1 for s in self._sessions.values() if s.room_id == effective_room or s.peer_id == effective_room)
+
+        return {
+            "found": True,
+            "room_id": effective_room,
+            "host_id": target_peer_id,
+            "code": host_sess.code,
+            "formatted_code": f"{host_sess.code[:3]}-{host_sess.code[3:]}" if len(host_sess.code) == 6 else host_sess.code,
+            "host_name": host_sess.name or f"Peer {target_peer_id[:6]}",
+            "host_os": host_sess.os,
+            "host_device": host_sess.device,
+            "total_members": max(1, members),
+            "created_at": datetime.fromtimestamp(host_sess.connected_at, tz=timezone.utc).isoformat(),
+        }
+
+    def get_nearby_rooms(self, client_ip: str) -> List[Dict[str, Any]]:
+        """Find active host rooms on the same local IP or network."""
+        nearby = []
+        if not client_ip:
+            return nearby
+
+        try:
+            client_ip_obj = ipaddress.ip_address(client_ip)
+        except Exception:
+            client_ip_obj = None
+
+        rooms_seen = set()
+        for pid, sess in self._sessions.items():
+            if sess.role != "host":
+                continue
+
+            effective_room = sess.room_id or pid
+            if effective_room in rooms_seen:
+                continue
+
+            is_match = False
+            # Exact IP match (common behind NAT / public Wi-Fi or same machine)
+            if sess.ip == client_ip:
+                is_match = True
+            elif client_ip_obj and (client_ip_obj.is_private or client_ip_obj.is_loopback):
+                try:
+                    sess_ip_obj = ipaddress.ip_address(sess.ip)
+                    if sess_ip_obj.is_loopback and client_ip_obj.is_loopback:
+                        is_match = True
+                    elif sess_ip_obj.is_private and client_ip_obj.is_private:
+                        sess_net = ipaddress.ip_network(f"{sess.ip}/24", strict=False)
+                        if client_ip_obj in sess_net:
+                            is_match = True
+                except Exception:
+                    pass
+
+            if is_match:
+                rooms_seen.add(effective_room)
+                members = sum(1 for s in self._sessions.values() if s.room_id == effective_room or s.peer_id == effective_room)
+                nearby.append({
+                    "room_id": effective_room,
+                    "host_id": pid,
+                    "code": sess.code,
+                    "formatted_code": f"{sess.code[:3]}-{sess.code[3:]}" if len(sess.code) == 6 else sess.code,
+                    "host_name": sess.name or f"Peer {pid[:6]}",
+                    "host_os": sess.os,
+                    "host_device": sess.device,
+                    "total_members": max(1, members),
+                    "created_at": datetime.fromtimestamp(sess.connected_at, tz=timezone.utc).isoformat(),
+                })
+
+        return nearby
 
     def get_active_peers(self) -> List[Dict[str, Any]]:
         """Return list of active peer session dictionaries."""
@@ -443,6 +589,8 @@ class _PeerRegistry:
             active_count = (1 if r_data["host"] else 0) + len(r_data["participants"])
             result.append({
                 "room_id": r_id,
+                "code": r_data["host"]["code"] if r_data["host"] else "",
+                "formatted_code": r_data["host"]["formatted_code"] if r_data["host"] else "",
                 "host_id": r_data["host"]["peer_id"] if r_data["host"] else None,
                 "host_name": r_data["host"]["name"] if r_data["host"] else "Unknown Host",
                 "host_os": r_data["host"]["os"] if r_data["host"] else None,
@@ -797,6 +945,7 @@ async def signaling(websocket: WebSocket):
         role = "host" if metadata.get("isHost") else ("guest" if metadata.get("roomId") else "unknown")
         room_id = metadata.get("roomId") or (candidate_id if metadata.get("isHost") else "")
         display_name = str(metadata.get("name", "")).strip()
+        client_code = str(metadata.get("code", "")).strip()
 
         # Construct session tracker
         session = PeerSession(
@@ -811,6 +960,7 @@ async def signaling(websocket: WebSocket):
             name=display_name,
             role=role,
             room_id=room_id,
+            code=client_code,
             headers=headers_snapshot,
         )
 
@@ -821,7 +971,11 @@ async def signaling(websocket: WebSocket):
             except Exception:
                 pass
         peer_id = candidate_id
-        await _send_json_safe(websocket, {"type": "registered", "id": peer_id})
+        await _send_json_safe(websocket, {
+            "type": "registered",
+            "id": peer_id,
+            "code": session.code,
+        })
 
         # ---- Phase 2: relay loop ---------------------------------------------------------
         while True:

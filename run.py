@@ -16,7 +16,7 @@ if not os.getenv("SECRET_KEY") and not os.getenv("SECRET_FILE"):
 
 import uvicorn
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -52,12 +52,16 @@ async def serve_frontend(full_path: str):
 
     # Route /admin or /admin/ to web/admin/index.html
     if clean_path == "admin":
+        if not full_path.endswith("/"):
+            return RedirectResponse(url="/admin/", status_code=301)
         admin_index = WEB_DIR / "admin" / "index.html"
         if admin_index.is_file():
             return FileResponse(admin_index, media_type="text/html")
 
     # If it is a directory containing an index.html, serve that index
     if clean_path and target.is_dir() and (target / "index.html").is_file():
+        if not full_path.endswith("/"):
+            return RedirectResponse(url=f"/{clean_path}/", status_code=301)
         return FileResponse(target / "index.html", media_type="text/html")
 
     # If it is a real static file in web/, serve it directly

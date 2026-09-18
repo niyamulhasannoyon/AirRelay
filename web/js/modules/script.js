@@ -112,46 +112,71 @@ async function onLoad() {
     // 'open' Peer error — surface that here so the host UI doesn't sit silently on
     // top of a half-initialized user._peer.
     try {
-      await user.init(new_room_id)
-      checkSharedTargetFiles(user)
+      await user.init(new_room_id);
+      if (user.code) {
+        const formattedCode = `${user.code.slice(0, 3)} ${user.code.slice(3, 6)}`;
+        if (dom.room_code_val) dom.room_code_val.textContent = formattedCode;
+        if (dom.qr_modal_code_val) dom.qr_modal_code_val.textContent = formattedCode;
+      }
+      checkSharedTargetFiles(user);
+      // Auto-discover other active rooms on the local network (AirDrop style)
+      checkAndDisplayNearbyRooms();
     } catch (err) {
       console.warn('Host init failed:', err);
-      dom.transfer_div.style.display = 'none'
-      dom.connect_div.style.display = 'none'
-      dom.error_div.style.display = 'block'
-      dom.error_message.innerHTML = 'Could not start AirRelay. Please check your connection and refresh the page.'
-      return
+      dom.transfer_div.style.display = 'none';
+      dom.connect_div.style.display = 'none';
+      dom.error_div.style.display = 'block';
+      dom.error_message.innerHTML = 'Could not start AirRelay. Please check your connection and refresh the page.';
+      return;
     }
   }
   // Peer
   else {
     // Init UI Components
-    dom.connect_div.style.display = 'block'
-    dom.transfer_url_value.textContent = `${window.location.origin}/${room_id}`
-    updateQRCodes(dom.transfer_url_value.textContent);
+    dom.connect_div.style.display = 'block';
+    updateConnectStatus('Finding room...', 'Resolving peer and connection info');
 
-    // Init peer connection. See host-path comment above — same contract.
+    let targetPeerId = room_id;
     try {
-      await user.init()
-      checkSharedTargetFiles(user)
+      const res = await fetch(`/api/rooms/resolve/${encodeURIComponent(room_id)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.peer_id) {
+          targetPeerId = data.peer_id;
+          if (data.code) {
+            const formattedCode = `${data.code.slice(0, 3)} ${data.code.slice(3, 6)}`;
+            if (dom.room_code_val) dom.room_code_val.textContent = formattedCode;
+            if (dom.qr_modal_code_val) dom.qr_modal_code_val.textContent = formattedCode;
+          }
+        }
+      }
     } catch (err) {
-      console.warn('Peer init failed:', err);
-      dom.connect_div.style.display = 'none'
-      dom.error_div.style.display = 'block'
-      dom.error_message.innerHTML = 'Could not start AirRelay. Please check your connection and refresh the page.'
-      return
+      console.warn('Room resolution via API failed:', err);
     }
 
-    // Connect to the room. user.connect rejects if the host is unreachable
-    // (peer-unavailable, ICE failure, closed before open) — surface that as a
-    // user-facing error instead of leaving the spinner up indefinitely.
+    dom.transfer_url_value.textContent = `${window.location.origin}/${targetPeerId}`;
+    updateQRCodes(dom.transfer_url_value.textContent);
+
+    updateConnectStatus('Preparing connection...', 'Pre-warming WebRTC ICE candidates');
     try {
-      await user.connect(room_id)
+      await user.init();
+      checkSharedTargetFiles(user);
+    } catch (err) {
+      console.warn('Peer init failed:', err);
+      dom.connect_div.style.display = 'none';
+      dom.error_div.style.display = 'block';
+      dom.error_message.innerHTML = 'Could not start AirRelay. Please check your connection and refresh the page.';
+      return;
+    }
+
+    updateConnectStatus('Connecting to peer...', 'Exchanging ICE candidates & DTLS encryption keys');
+    try {
+      await user.connect(targetPeerId);
     } catch (err) {
       console.warn('Failed to join room:', err);
-      dom.connect_div.style.display = 'none'
-      dom.error_div.style.display = 'block'
-      dom.error_message.innerHTML = 'Could not reach the host. The room may no longer be active.'
+      dom.connect_div.style.display = 'none';
+      dom.error_div.style.display = 'block';
+      dom.error_message.innerHTML = 'Could not reach the host. The room may no longer be active.';
     }
   }
 }
@@ -289,6 +314,358 @@ function copyURL() {
     dom.transfer_url_success.style.display = 'none'
     dom.transfer_url_copy.style.display = 'flex'
   }, 1000)
+}
+
+// Dynamic status for connecting div
+function updateConnectStatus(title, desc) {
+  if (dom.connect_status_title) dom.connect_status_title.textContent = title;
+  if (dom.connect_status_desc) dom.connect_status_desc.textContent = desc;
+}
+
+// Copy Quick 6-Digit Room Code
+function copyRoomCode() {
+  const code = user?.code || dom.room_code_val?.textContent.replace(/\s+/g, '');
+  if (!code || code === '······' || code === '--- ---') return;
+  const formatted = code.length === 6 ? `${code.slice(0, 3)} ${code.slice(3, 6)}` : code;
+
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(formatted);
+  } else {
+    const textarea = document.createElement("textarea");
+    textarea.value = formatted;
+    document.body.appendChild(textarea);
+    textarea.select();
+    document.execCommand('copy');
+    document.body.removeChild(textarea);
+  }
+
+  showToast("Quick Code copied.");
+  if (dom.room_code_copy_btn && dom.room_code_copied_btn) {
+    dom.room_code_copy_btn.style.display = 'none';
+    dom.room_code_copied_btn.style.display = 'inline-flex';
+    setTimeout(() => {
+      dom.room_code_copied_btn.style.display = 'none';
+      dom.room_code_copy_btn.style.display = 'inline-flex';
+    }, 1000);
+  }
+}
+
+// Local Network Auto-Discovery (AirDrop style)
+async function checkAndDisplayNearbyRooms() {
+  try {
+    const res = await fetch('/api/rooms/nearby');
+    if (!res.ok) return;
+    const rooms = await res.json();
+    if (!Array.isArray(rooms) || rooms.length === 0) return;
+
+    // Filter out our own room
+    const availableRooms = rooms.filter(r => r.peer_id !== user?.id && r.code !== user?.code);
+    if (availableRooms.length === 0) return;
+
+    if (dom.join_nearby_badge) {
+      dom.join_nearby_badge.textContent = availableRooms.length;
+      dom.join_nearby_badge.style.display = 'inline-block';
+    }
+
+    if (dom.nearby_banner) {
+      const first = availableRooms[0];
+      if (dom.nearby_banner_desc) {
+        if (availableRooms.length === 1) {
+          dom.nearby_banner_desc.textContent = `${first.name} is sharing files on your Wi-Fi (Code: ${first.formatted_code})`;
+        } else {
+          dom.nearby_banner_desc.textContent = `${availableRooms.length} devices are sharing files on your local Wi-Fi`;
+        }
+      }
+      if (dom.nearby_banner_join) {
+        dom.nearby_banner_join.onclick = () => {
+          if (availableRooms.length === 1) {
+            window.location.href = `/${first.peer_id}`;
+          } else {
+            openJoinModal('nearby');
+          }
+        };
+      }
+      dom.nearby_banner.style.display = 'block';
+    }
+  } catch (err) {
+    console.warn('Nearby rooms check failed:', err);
+  }
+}
+
+// Join Room Modal logic
+let scannerStream = null;
+let scannerAnimationId = null;
+
+function openJoinModal(tab = 'code') {
+  if (!dom.join_modal || typeof bootstrap === 'undefined') return;
+  const modal = bootstrap.Modal.getOrCreateInstance(dom.join_modal);
+  switchJoinTab(tab);
+  modal.show();
+}
+
+function switchJoinTab(tab) {
+  if (tab !== 'scanner') {
+    stopScanner();
+  }
+
+  const tabs = [
+    { name: 'code', btn: dom.join_tab_code, pane: dom.join_panel_code },
+    { name: 'nearby', btn: dom.join_tab_nearby, pane: dom.join_panel_nearby },
+    { name: 'scanner', btn: dom.join_tab_scanner, pane: dom.join_panel_scanner },
+  ];
+
+  tabs.forEach(t => {
+    if (t.name === tab) {
+      t.btn?.classList.add('active');
+      if (t.pane) t.pane.style.display = 'block';
+    } else {
+      t.btn?.classList.remove('active');
+      if (t.pane) t.pane.style.display = 'none';
+    }
+  });
+
+  if (tab === 'nearby') {
+    renderNearbyList();
+  } else if (tab === 'scanner') {
+    startScanner();
+  } else if (tab === 'code') {
+    setTimeout(() => {
+      const firstDigit = document.querySelector('.digit-box');
+      firstDigit?.focus?.();
+    }, 50);
+  }
+}
+
+async function renderNearbyList() {
+  if (!dom.join_nearby_list) return;
+  dom.join_nearby_list.innerHTML = `
+    <div class="nearby-empty-state">
+      <div class="spinner-border text-primary spinner-border-sm mb-2" role="status"></div>
+      <p style="margin: 0; color: var(--text-secondary);">Scanning local network...</p>
+    </div>
+  `;
+
+  try {
+    const res = await fetch('/api/rooms/nearby');
+    if (!res.ok) throw new Error('API error');
+    const rooms = await res.json();
+    const available = Array.isArray(rooms)
+      ? rooms.filter(r => r.peer_id !== user?.id && r.code !== user?.code)
+      : [];
+
+    if (dom.join_nearby_badge) {
+      dom.join_nearby_badge.textContent = available.length;
+      dom.join_nearby_badge.style.display = available.length > 0 ? 'inline-block' : 'none';
+    }
+
+    if (available.length === 0) {
+      dom.join_nearby_list.innerHTML = `
+        <div class="nearby-empty-state">
+          <span class="nearby-pulse-radar" style="position: relative; display: inline-block; margin-bottom: 12px; width: 32px; height: 32px;"></span>
+          <p style="margin: 0; font-weight: 500; color: var(--text-primary);">No nearby devices found</p>
+          <p style="margin: 4px 0 0; font-size: 0.8rem; color: var(--text-secondary);">Make sure the other device is on the same Wi-Fi with AirRelay open.</p>
+        </div>
+      `;
+      return;
+    }
+
+    dom.join_nearby_list.innerHTML = available.map(r => `
+      <div class="nearby-device-card">
+        <div class="nearby-device-info">
+          <div class="nearby-device-avatar">
+            ${getOSIconSVG(r.os, 18)}
+          </div>
+          <div class="nearby-device-details">
+            <span class="nearby-device-name">${escapeHTML(r.name)}</span>
+            <span class="nearby-device-meta">Code: ${escapeHTML(r.formatted_code)}</span>
+          </div>
+        </div>
+        <button class="btn-primary-pill btn-sm nearby-connect-btn" data-peer="${escapeHTML(r.peer_id)}" type="button">
+          <span>Connect ⚡</span>
+        </button>
+      </div>
+    `).join('');
+
+    dom.join_nearby_list.querySelectorAll('.nearby-connect-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const peer = btn.getAttribute('data-peer');
+        if (peer) {
+          const modal = bootstrap.Modal.getInstance(dom.join_modal);
+          modal?.hide?.();
+          window.location.href = `/${peer}`;
+        }
+      });
+    });
+  } catch {
+    dom.join_nearby_list.innerHTML = `
+      <div class="nearby-empty-state">
+        <p style="margin: 0; color: var(--status-danger);">Failed to scan local network.</p>
+      </div>
+    `;
+  }
+}
+
+async function submitJoinCode(query) {
+  if (!query || query.trim().length === 0) return;
+  const clean = query.trim();
+
+  if (dom.join_error_msg) dom.join_error_msg.style.display = 'none';
+  if (dom.join_loading) dom.join_loading.style.display = 'block';
+
+  try {
+    const res = await fetch(`/api/rooms/resolve/${encodeURIComponent(clean)}`);
+    if (!res.ok) throw new Error('Not found');
+    const data = await res.json();
+    if (data && data.peer_id) {
+      const modal = bootstrap.Modal.getInstance(dom.join_modal);
+      modal?.hide?.();
+      window.location.href = `/${data.peer_id}`;
+      return;
+    }
+  } catch {
+    if (dom.join_loading) dom.join_loading.style.display = 'none';
+    if (dom.join_error_msg) {
+      dom.join_error_msg.textContent = 'No active room found with this code or link. Please check and try again.';
+      dom.join_error_msg.style.display = 'block';
+    }
+  }
+}
+
+function escapeHTML(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+async function startScanner() {
+  if (!dom.join_scanner_video) return;
+  if (dom.join_scanner_status) {
+    dom.join_scanner_status.textContent = 'Starting camera...';
+  }
+
+  try {
+    scannerStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+    });
+    dom.join_scanner_video.srcObject = scannerStream;
+    await dom.join_scanner_video.play();
+    if (dom.join_scanner_status) {
+      dom.join_scanner_status.textContent = 'Point camera at AirRelay QR code';
+    }
+
+    if ('BarcodeDetector' in window) {
+      const detector = new window.BarcodeDetector({ formats: ['qr_code'] });
+      const scanLoop = async () => {
+        if (!scannerStream) return;
+        try {
+          if (dom.join_scanner_video.readyState >= 2) {
+            const codes = await detector.detect(dom.join_scanner_video);
+            if (codes && codes.length > 0) {
+              const rawVal = codes[0].rawValue;
+              stopScanner();
+              submitJoinCode(rawVal);
+              return;
+            }
+          }
+        } catch {}
+        scannerAnimationId = requestAnimationFrame(scanLoop);
+      };
+      scannerAnimationId = requestAnimationFrame(scanLoop);
+    } else {
+      if (dom.join_scanner_status) {
+        dom.join_scanner_status.textContent = 'Camera active. Point at QR code or enter Quick Code.';
+      }
+    }
+  } catch (err) {
+    console.warn('Camera access error:', err);
+    if (dom.join_scanner_status) {
+      dom.join_scanner_status.textContent = 'Camera access denied or unavailable.';
+    }
+  }
+}
+
+function stopScanner() {
+  if (scannerAnimationId) {
+    cancelAnimationFrame(scannerAnimationId);
+    scannerAnimationId = null;
+  }
+  if (scannerStream) {
+    scannerStream.getTracks().forEach(track => track.stop());
+    scannerStream = null;
+  }
+  if (dom.join_scanner_video) {
+    dom.join_scanner_video.srcObject = null;
+  }
+}
+
+function initDigitInputs() {
+  const boxes = document.querySelectorAll('.digit-box');
+  if (!boxes || boxes.length === 0) return;
+
+  boxes.forEach((box, index) => {
+    box.addEventListener('input', () => {
+      const val = box.value.replace(/\D/g, '');
+      box.value = val ? val[val.length - 1] : '';
+
+      if (box.value) {
+        box.classList.add('filled');
+        if (index < boxes.length - 1) {
+          boxes[index + 1].focus();
+        } else {
+          const fullCode = Array.from(boxes).map(b => b.value).join('');
+          if (fullCode.length === 6) {
+            submitJoinCode(fullCode);
+          }
+        }
+      } else {
+        box.classList.remove('filled');
+      }
+    });
+
+    box.addEventListener('keydown', (e) => {
+      if (e.key === 'Backspace') {
+        if (!box.value && index > 0) {
+          boxes[index - 1].focus();
+          boxes[index - 1].value = '';
+          boxes[index - 1].classList.remove('filled');
+        } else {
+          box.value = '';
+          box.classList.remove('filled');
+        }
+      } else if (e.key === 'ArrowLeft' && index > 0) {
+        boxes[index - 1].focus();
+      } else if (e.key === 'ArrowRight' && index < boxes.length - 1) {
+        boxes[index + 1].focus();
+      } else if (e.key === 'Enter') {
+        const fullCode = Array.from(boxes).map(b => b.value).join('');
+        if (fullCode.length === 6) {
+          submitJoinCode(fullCode);
+        }
+      }
+    });
+
+    box.addEventListener('paste', (e) => {
+      e.preventDefault();
+      const paste = (e.clipboardData || window.clipboardData).getData('text');
+      if (!paste) return;
+
+      const trimmed = paste.trim();
+      const digitsOnly = trimmed.replace(/\D/g, '');
+      if (digitsOnly.length === 6) {
+        for (let i = 0; i < 6; i++) {
+          boxes[i].value = digitsOnly[i];
+          boxes[i].classList.add('filled');
+        }
+        boxes[5].focus();
+        submitJoinCode(digitsOnly);
+      } else {
+        if (dom.join_manual_input) dom.join_manual_input.value = trimmed;
+        submitJoinCode(trimmed);
+      }
+    });
+  });
 }
 
 // Share Room via Web Share API or fallback to copyURL
@@ -460,6 +837,13 @@ function initKeyboardShortcuts() {
       openQRModal();
       return;
     }
+
+    // 'j' or 'J': Open Join Room modal
+    if (e.key === 'j' || e.key === 'J') {
+      e.preventDefault();
+      openJoinModal('code');
+      return;
+    }
   });
 }
 
@@ -473,10 +857,15 @@ function bindUI() {
   on('theme-text', 'click', themeClick);
   on('about-text', 'click', aboutClick);
   on('header-logo', 'click', () => { window.location.href = '/' });
+  on('join-room-btn', 'click', () => openJoinModal('code'));
   onEnter('password-input', connectWithPassword);
   on('password-input-toggle', 'click', () => togglePasswordVisibility('password-input', 'password-show', 'password-hide'));
   on('password-submit', 'click', connectWithPassword);
   on('transfer-url-row', 'click', copyURL);
+  on('room-code-badge', 'click', copyRoomCode);
+  on('room-code-copy-btn', 'click', (e) => { e.stopPropagation(); copyRoomCode(); });
+  on('nearby-banner-dismiss', 'click', () => { if (dom.nearby_banner) dom.nearby_banner.style.display = 'none'; });
+  on('connect-cancel-btn', 'click', () => { window.location.href = '/'; });
   on('transfer-share-btn', 'click', shareRoom);
   on('transfer-qr-btn', 'click', openQRModal);
   on('transfer-qr-code', 'click', openQRModal);
@@ -503,6 +892,16 @@ function bindUI() {
   on('name-modal-confirm', 'click', changeNameSubmit);
   on('download-modal-cancel', 'click', cancelDownloadAll);
 
+  // Join Room modal controls
+  on('join-tab-code', 'click', () => switchJoinTab('code'));
+  on('join-tab-nearby', 'click', () => switchJoinTab('nearby'));
+  on('join-tab-scanner', 'click', () => switchJoinTab('scanner'));
+  on('join-nearby-refresh', 'click', renderNearbyList);
+  on('join-manual-btn', 'click', () => submitJoinCode(dom.join_manual_input?.value));
+  onEnter('join-manual-input', () => submitJoinCode(dom.join_manual_input?.value));
+  dom.join_modal?.addEventListener?.('hidden.bs.modal', stopScanner);
+
+  initDigitInputs();
   updateSoundUI();
   initKeyboardShortcuts();
 }

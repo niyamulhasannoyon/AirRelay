@@ -359,9 +359,10 @@ class Peer extends EventEmitter {
     super();
     this._id = id;
     this._opts = opts;
-    // Full RTCConfiguration (iceServers + iceTransportPolicy etc.) — callers like
-    // mode.js set policy here, so it must reach the RTCPeerConnection verbatim.
-    this._rtcConfig = (opts.config && typeof opts.config === 'object') ? opts.config : {};
+    this._code = '';
+    // Full RTCConfiguration (iceServers + iceTransportPolicy etc.) with pre-gathered ICE pool
+    const baseConfig = (opts.config && typeof opts.config === 'object') ? opts.config : {};
+    this._rtcConfig = Object.assign({ iceCandidatePoolSize: 2 }, baseConfig);
     this._wsUrl = this._buildSignalUrl(opts);
     this._ws = null;
     this._destroyed = false;
@@ -387,6 +388,7 @@ class Peer extends EventEmitter {
   }
 
   get id() { return this._id; }
+  get code() { return this._code; }
   get destroyed() { return this._destroyed; }
 
   // ---- Signaling socket ----------------------------------------------------------------
@@ -481,12 +483,13 @@ class Peer extends EventEmitter {
   _handleSignalingMessage(msg) {
     switch (msg.type) {
       case 'registered':
+        this._code = msg.code || this._code || '';
         this._startPing();
         this._flushSignalQueue();
         // Emit 'open' on every successful (re-)registration. Matches PeerJS semantics
         // (server sends OPEN on reconnect and the client re-emits) and lets the
         // application reset its reconnect-attempt counter.
-        this.emit('open', this._id);
+        this.emit('open', this._id, this._code);
         return;
       case 'signal': {
         const from = msg.from;

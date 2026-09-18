@@ -570,7 +570,7 @@ function renderPeersTable() {
         </span>
       </td>
       <td>
-        <span class="code-badge" onclick="window.adminCopy('${escapeHtml(p.peer_id)}', 'Peer ID')" title="Click to copy">
+        <span class="code-badge" data-action="copy" data-value="${escapeHtml(p.peer_id)}" data-label="Peer ID" title="Click to copy">
           ${escapeHtml(p.peer_id.slice(0, 8))}...
         </span>
       </td>
@@ -581,7 +581,7 @@ function renderPeersTable() {
         <span class="role-badge role-${p.role}">${p.role.toUpperCase()}</span>
       </td>
       <td>
-        ${p.room_id ? `<span class="code-badge" onclick="window.adminCopy('${escapeHtml(p.room_id)}', 'Room ID')" title="Click to copy">${escapeHtml(p.room_id.slice(0, 8))}...</span>` : '<span style="color:var(--admin-text-muted);">-</span>'}
+        ${p.room_id ? `<span class="code-badge" data-action="copy" data-value="${escapeHtml(p.room_id)}" data-label="Room ID" title="Click to copy">${escapeHtml(p.room_id.slice(0, 8))}...</span>` : '<span style="color:var(--admin-text-muted);">-</span>'}
       </td>
       <td>
         <div style="display:flex;flex-direction:column;gap:2px;">
@@ -603,8 +603,8 @@ function renderPeersTable() {
       </td>
       <td>
         <div style="display:flex;align-items:center;gap:6px;">
-          <button class="admin-btn admin-btn-sm" onclick="window.adminInspect('${escapeHtml(p.peer_id)}')">Inspect</button>
-          <button class="admin-btn admin-btn-sm admin-btn-danger" onclick="window.adminPromptKick('${escapeHtml(p.peer_id)}', '${escapeHtml(p.name)}')">Kick</button>
+          <button class="admin-btn admin-btn-sm" data-action="inspect" data-peer-id="${escapeHtml(p.peer_id)}">Inspect</button>
+          <button class="admin-btn admin-btn-sm admin-btn-danger" data-action="kick" data-peer-id="${escapeHtml(p.peer_id)}" data-peer-name="${escapeHtml(p.name)}">Kick</button>
         </div>
       </td>
     </tr>
@@ -629,7 +629,7 @@ function renderRoomsTable() {
   dom.roomsTableBody.innerHTML = rooms.map(r => `
     <tr>
       <td>
-        <span class="code-badge" onclick="window.adminCopy('${escapeHtml(r.room_id)}', 'Room ID')">
+        <span class="code-badge" data-action="copy" data-value="${escapeHtml(r.room_id)}" data-label="Room ID" title="Click to copy">
           ${escapeHtml(r.room_id.slice(0, 10))}...
         </span>
       </td>
@@ -651,7 +651,7 @@ function renderRoomsTable() {
         <span>${formatDuration(r.duration_seconds)}</span>
       </td>
       <td>
-        <button class="admin-btn admin-btn-sm admin-btn-danger" onclick="window.adminCloseRoom('${escapeHtml(r.room_id)}')">Terminate Room</button>
+        <button class="admin-btn admin-btn-sm admin-btn-danger" data-action="close-room" data-room-id="${escapeHtml(r.room_id)}">Terminate Room</button>
       </td>
     </tr>
   `).join('');
@@ -676,7 +676,7 @@ function renderHistoryTable() {
   dom.historyTableBody.innerHTML = filtered.map(p => `
     <tr>
       <td>
-        <span class="code-badge" onclick="window.adminCopy('${escapeHtml(p.peer_id)}', 'Peer ID')">
+        <span class="code-badge" data-action="copy" data-value="${escapeHtml(p.peer_id)}" data-label="Peer ID" title="Click to copy">
           ${escapeHtml(p.peer_id.slice(0, 8))}...
         </span>
       </td>
@@ -702,7 +702,7 @@ function renderHistoryTable() {
         <span style="color:var(--admin-status-danger);font-size:0.75rem;">${escapeHtml(p.disconnect_reason || 'Closed')}</span>
       </td>
       <td>
-        <button class="admin-btn admin-btn-sm" onclick="window.adminInspect('${escapeHtml(p.peer_id)}')">Inspect</button>
+        <button class="admin-btn admin-btn-sm" data-action="inspect" data-peer-id="${escapeHtml(p.peer_id)}">Inspect</button>
       </td>
     </tr>
   `).join('');
@@ -753,7 +753,7 @@ async function inspectPeer(peerId) {
       <div class="detail-grid">
         <div class="detail-item">
           <div class="detail-label">Peer ID</div>
-          <div class="detail-value code-badge" onclick="window.adminCopy('${escapeHtml(peer.peer_id)}')">${escapeHtml(peer.peer_id)}</div>
+          <div class="detail-value code-badge" data-action="copy" data-value="${escapeHtml(peer.peer_id)}" data-label="Peer ID" title="Click to copy">${escapeHtml(peer.peer_id)}</div>
         </div>
         <div class="detail-item">
           <div class="detail-label">Session ID</div>
@@ -769,7 +769,7 @@ async function inspectPeer(peerId) {
         </div>
         <div class="detail-item">
           <div class="detail-label">Room ID</div>
-          <div class="detail-value">${peer.room_id ? `<span class="code-badge" onclick="window.adminCopy('${escapeHtml(peer.room_id)}')">${escapeHtml(peer.room_id)}</span>` : 'None'}</div>
+          <div class="detail-value">${peer.room_id ? `<span class="code-badge" data-action="copy" data-value="${escapeHtml(peer.room_id)}" data-label="Room ID" title="Click to copy">${escapeHtml(peer.room_id)}</span>` : 'None'}</div>
         </div>
         <div class="detail-item">
           <div class="detail-label">Status</div>
@@ -813,7 +813,7 @@ async function inspectPeer(peerId) {
         </div>
       ` : `
         <div style="display:flex;justify-content:flex-end;margin-top:10px;">
-          <button class="admin-btn admin-btn-danger" onclick="window.adminPromptKick('${escapeHtml(peer.peer_id)}', '${escapeHtml(peer.name)}')">Kick This Peer</button>
+          <button class="admin-btn admin-btn-danger" data-action="kick" data-peer-id="${escapeHtml(peer.peer_id)}" data-peer-name="${escapeHtml(peer.name)}">Kick This Peer</button>
         </div>
       `}
     `;
@@ -1049,6 +1049,29 @@ function initEvents() {
       triggerExport(choice ? 'csv' : 'json');
     });
   }
+
+  // Delegated click handler for CSP-compliant dynamic actions
+  document.addEventListener('click', (e) => {
+    const actionEl = e.target.closest('[data-action]');
+    if (!actionEl) return;
+
+    const action = actionEl.getAttribute('data-action');
+    if (action === 'copy') {
+      const val = actionEl.getAttribute('data-value');
+      const label = actionEl.getAttribute('data-label') || 'Copied';
+      if (val) copyToClipboard(val, label);
+    } else if (action === 'inspect') {
+      const peerId = actionEl.getAttribute('data-peer-id');
+      if (peerId) inspectPeer(peerId);
+    } else if (action === 'kick') {
+      const peerId = actionEl.getAttribute('data-peer-id');
+      const peerName = actionEl.getAttribute('data-peer-name') || peerId;
+      if (peerId) promptKickPeer(peerId, peerName);
+    } else if (action === 'close-room') {
+      const roomId = actionEl.getAttribute('data-room-id');
+      if (roomId) closeRoom(roomId);
+    }
+  });
 
   // Close modals on overlay backdrop click
   document.querySelectorAll('.admin-modal-overlay').forEach(overlay => {
