@@ -12,12 +12,15 @@ RUN apk add --no-cache --virtual .build-deps build-base libffi-dev musl-dev pyth
 
 WORKDIR /filesync
 
+# Suppress pip root user warning in containerized environment
+ENV PIP_ROOT_USER_ACTION=ignore
+
 # Copy requirements
 COPY api/requirements.txt .
 
 # Install Python dependencies to a separate location
-RUN pip install --no-cache-dir --prefer-binary --upgrade pip setuptools wheel \
-    && pip install --no-cache-dir --prefix=/install -r requirements.txt
+RUN pip install --no-cache-dir --root-user-action=ignore --prefer-binary --upgrade pip setuptools wheel \
+    && pip install --no-cache-dir --root-user-action=ignore --prefix=/install -r requirements.txt
 
 # Optional: remove tests and unnecessary files from site-packages
 RUN find /install/lib/ -path "*/site-packages/tests" -type d -exec rm -rf {} + \
@@ -34,6 +37,9 @@ FROM python:3.14-alpine
 RUN apk add --no-cache nginx bash
 
 WORKDIR /filesync
+
+# Suppress pip root user warning in containerized environment
+ENV PIP_ROOT_USER_ACTION=ignore
 
 # Copy Python dependencies from builder
 COPY --from=builder /install /usr/local
