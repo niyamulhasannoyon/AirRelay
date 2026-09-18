@@ -587,7 +587,11 @@ body {
 .file-submeta {
   font-size: 0.8rem;
   color: var(--text-muted);
-  margin-top: 2px;
+  margin-top: 3px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .file-card-actions {
@@ -600,22 +604,28 @@ body {
 /* File Action Buttons */
 .btn-action-primary {
   background: var(--accent-gradient);
+  color: #ffffff;
   border: none;
-  color: #fff;
-  padding: 8px 16px;
-  border-radius: var(--radius-full);
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   font-weight: 600;
-  cursor: pointer;
+  padding: 6px 14px;
+  border-radius: var(--radius-full);
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  cursor: pointer;
   transition: all 0.15s ease;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.25);
 }
 
 .btn-action-primary:hover {
-  filter: brightness(1.1);
+  opacity: 0.95;
   transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.35);
+}
+
+.btn-action-primary:active {
+  transform: translateY(1px) scale(0.98);
 }
 
 .btn-action-ghost {
@@ -636,6 +646,11 @@ body {
   background: var(--glass-bg-hover);
   color: var(--text-primary);
   border-color: var(--glass-border-hover);
+  transform: translateY(-1px);
+}
+
+.btn-action-ghost:active {
+  transform: translateY(1px) scale(0.98);
 }
 
 .btn-action-danger {
@@ -655,6 +670,10 @@ body {
 .btn-action-danger:hover {
   background: rgba(239, 68, 68, 0.2);
   transform: translateY(-1px);
+}
+
+.btn-action-danger:active {
+  transform: translateY(1px) scale(0.98);
 }
 
 /* File Progress Bar & Metrics */
@@ -685,20 +704,24 @@ body {
   font-size: 0.8rem;
   color: var(--text-muted);
   margin-top: 6px;
+  font-variant-numeric: tabular-nums;
 }
 
 .metrics-left {
   display: flex;
   align-items: center;
   gap: 8px;
+  font-variant-numeric: tabular-nums;
 }
 
 .metric-percent {
   font-weight: 600;
   color: var(--accent-primary);
+  font-variant-numeric: tabular-nums;
 }
 
 .metric-speed {
+  font-variant-numeric: tabular-nums;
   color: var(--text-secondary);
 }
 
@@ -817,4 +840,198 @@ body {
     width: 100%;
     justify-content: flex-end;
   }
+}
+
+/* ==========================================================================
+   Network Topology & Candidate Telemetry
+   ========================================================================== */
+.file-telemetry-badge-wrap,
+.user-telemetry-wrap {
+  display: inline-flex;
+  align-items: center;
+}
+
+.net-topology-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border-radius: var(--radius-full);
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+  vertical-align: middle;
+  transition: all 0.2s ease;
+}
+
+.net-badge-lan {
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.net-badge-p2p {
+  background: rgba(6, 182, 212, 0.12);
+  color: #06b6d4;
+  border: 1px solid rgba(6, 182, 212, 0.3);
+}
+
+.net-badge-relay {
+  background: rgba(245, 158, 11, 0.12);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.net-badge-unknown {
+  background: var(--glass-bg-subtle);
+  color: var(--text-muted);
+  border: 1px solid var(--glass-border);
+}
+
+.net-badge-icon {
+  font-size: 0.75rem;
+}
+
+/* ==========================================================================
+   Cryptographic Checksum Badge
+   ========================================================================== */
+.checksum-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  border-radius: var(--radius-full);
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.35;
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.28);
+  cursor: pointer;
+  transition: all 0.18s ease;
+  user-select: none;
+}
+
+.checksum-badge:hover {
+  background: rgba(16, 185, 129, 0.22);
+  border-color: rgba(16, 185, 129, 0.55);
+  transform: translateY(-1px);
+}
+
+/* ==========================================================================
+   User Identicon
+   ========================================================================== */
+.user-identicon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-right: 2px;
+}
+
+/* ==========================================================================
+   Full Window Drag & Drop Overlay
+   ========================================================================== */
+.drag-overlay-container {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: rgba(8, 11, 17, 0.85);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  animation: fadeInOverlay 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.drag-overlay-card {
+  padding: 44px 56px;
+  border: 2px dashed var(--accent-primary);
+  border-radius: var(--radius-xl);
+  text-align: center;
+  background: var(--glass-bg);
+  box-shadow: 0 0 60px rgba(59, 130, 246, 0.25);
+  transform: scale(1.02);
+  animation: pulseScale 2s infinite ease-in-out;
+}
+
+.drag-overlay-icon {
+  color: var(--accent-primary);
+  margin-bottom: 16px;
+}
+
+.drag-overlay-title {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 8px;
+}
+
+.drag-overlay-subtext {
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+@keyframes pulseScale {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.02); }
+}
+
+@keyframes fadeInOverlay {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ==========================================================================
+   Keyboard Shortcuts Modal
+   ========================================================================== */
+.shortcuts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.shortcut-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  background: var(--glass-bg-subtle);
+  border: 1px solid var(--glass-border);
+}
+
+.shortcut-desc {
+  font-size: 0.88rem;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.shortcut-keys {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+kbd {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 3px 7px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--glass-border);
+  color: var(--text-primary);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+:root.light kbd {
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--text-primary);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }

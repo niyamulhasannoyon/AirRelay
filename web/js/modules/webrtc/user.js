@@ -5,8 +5,9 @@ import { File } from './file.js';
 import { Peer } from './peer.js';
 import { openSink } from '../sink.js';
 import { downloadZip } from '../../vendors/client-zip.min.js';
-import { soundFileDrop } from '../sound.js';
+import { soundFileDrop, soundPeerJoin, soundPeerLeave } from '../sound.js';
 import { computeSha256 } from '../crypto.js';
+import { inspectPeerConnection, renderTelemetryBadge } from '../telemetry.js';
 
 export function getIdenticonSVG(seed = '', size = 18) {
   let hash = 0;
@@ -1177,6 +1178,16 @@ export class User {
       this._remotePeers[conn.peer] = {"conn": conn, "interval": setInterval(() => this._isAlive(conn.peer), 1000)}
       this._watchIce(conn, this._remotePeers[conn.peer])
 
+      // Inspect link to host
+      if (conn.peerConnection) {
+        inspectPeerConnection(conn.peerConnection).then((tel) => {
+          if (tel) {
+            const hostTelEl = document.getElementById('transfer-users-list-host-telemetry');
+            if (hostTelEl) hostTelEl.innerHTML = renderTelemetryBadge(tel);
+          }
+        }).catch(() => {});
+      }
+
       // Send credentials to the host to authenticate
       if (!this._password) {
         conn.send({"webrtc-connect": {"name": this._name, "os": this._os}})
@@ -1226,6 +1237,16 @@ export class User {
         // Build user's list. conn.peer is the remote's peer id — already validated by
         // the signaling server's id-format check at /ws register time.
         this._addUserUI({"id": conn.peer, "name": this._remotePeers[conn.peer].name, "os": peerOs})
+
+        // Inspect peer connection topology (LAN vs NAT vs Relay) and render badge
+        if (conn.peerConnection) {
+          inspectPeerConnection(conn.peerConnection).then((tel) => {
+            if (tel) {
+              const telEl = document.getElementById(`user-${conn.peer}-telemetry`);
+              if (telEl) telEl.innerHTML = renderTelemetryBadge(tel);
+            }
+          }).catch(() => {});
+        }
 
         // Send confirmation
         conn.send({'webrtc-connect-response': {"status": "welcome", "secured": this._password.trim().length != 0}})
@@ -1688,11 +1709,13 @@ export class User {
     li.setAttribute('class', 'user-badge-item list-group-item')
     const peerOs = user.os || 'generic';
     li.innerHTML = `
-      <div class="user-badge-pill">
+      <div class="user-badge-pill" id="user-${user.id}-pill">
+        <span class="user-identicon">${getIdenticonSVG(user.name || user.id, 18)}</span>
         <span class="user-os-icon" id="user-${user.id}-os" title="OS: ${peerOs}">
           ${getOSIconSVG(peerOs, 16)}
         </span>
         <span class="user-badge-name" id="user-${user.id}-name"></span>
+        <span id="user-${user.id}-telemetry" class="user-telemetry-wrap"></span>
         <span class="user-status-dot online" title="Online"></span>
       </div>
     `
@@ -1703,8 +1726,11 @@ export class User {
     // Update the number of users in the list
     dom.transfer_users_count.innerHTML = ` (${dom.transfer_users_list.querySelectorAll('li').length})`
 
-    // Show toast (skip for own user)
-    if (user.id != this._peer.id) showToast(`User ${user.name} joined.`)
+    // Show toast and play welcoming chime (skip for own user)
+    if (user.id != this._peer.id) {
+      soundPeerJoin();
+      showToast(`User ${user.name} joined.`)
+    }
   }
 
   _removeUserUI(user_id) {
@@ -1712,12 +1738,14 @@ export class User {
     const userName = this._remotePeers[user_id]?.name || document.getElementById(`user-${user_id}-name`)?.textContent?.trim() || 'A user'
 
     // Remove user from the list
-    document.getElementById(`user-${user_id}`).remove()
+    const userEl = document.getElementById(`user-${user_id}`)
+    if (userEl) userEl.remove()
 
     // Update the number of users in the list
     dom.transfer_users_count.innerHTML = ` (${dom.transfer_users_list.querySelectorAll('li').length})`
 
-    // Show toast
+    // Play subtle departure tone and show toast
+    soundPeerLeave();
     showToast(`User ${userName} left.`, 'warning')
   }
 
@@ -1748,6 +1776,11 @@ export class User {
               </div>
               <div class="file-submeta">
                 <span id="file-${file.id}-info"></span>
+                <span id="file-${file.id}-telemetry" class="file-telemetry-badge-wrap"></span>
+                <span id="file-${file.id}-verified" class="checksum-badge" style="display:none" title="Verified with SHA-256 (Click to inspect)">
+                  <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor"><path d="M12.736 3.97a.733.733 0 0 1 1.047 0c.286.289.29.756.01 1.05L7.88 12.01a.733.733 0 0 1-1.065.02L3.217 8.384a.757.757 0 0 1 0-1.06.733.733 0 0 1 1.047 0l3.052 3.093 5.4-6.425z"/></svg>
+                  <span>SHA-256 Verified</span>
+                </span>
               </div>
             </div>
           </div>
@@ -1805,6 +1838,25 @@ export class User {
     on(`file-${file.id}-remove`, () => this.removeFile(file.id));
     on(`file-${file.id}-abort`, () => this.abortFile(file.id));
     on(`file-${file.id}-download`, () => this.downloadFile(file.id));
+    on(`file-${file.id}-verified`, () => {
+      const badge = document.getElementById(`file-${file.id}-verified`);
+      const hash = badge?.dataset?.hash || file.hash;
+      if (hash && typeof bootstrap !== 'undefined' && dom.checksum_modal) {
+        if (dom.checksum_modal_hash) dom.checksum_modal_hash.textContent = hash;
+        if (dom.checksum_modal_filename) dom.checksum_modal_filename.textContent = file.name;
+        const modal = new bootstrap.Modal(dom.checksum_modal);
+        modal.show();
+      }
+    });
+
+    if (file.hash) {
+      const verifiedBadge = document.getElementById(`file-${file.id}-verified`);
+      if (verifiedBadge) {
+        verifiedBadge.style.display = 'inline-flex';
+        verifiedBadge.dataset.hash = file.hash;
+        verifiedBadge.title = `SHA-256: ${file.hash}\nClick to inspect`;
+      }
+    }
 
     // Insert user-controlled text safely (textContent never parses HTML).
     const nameEl = document.getElementById(`file-${file.id}-name`);

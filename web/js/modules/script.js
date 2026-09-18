@@ -1,7 +1,8 @@
 import { dom, showToast } from './dom.js';
-import { User, getOSIconSVG } from './webrtc/user.js';
+import { User, getOSIconSVG, getIdenticonSVG } from './webrtc/user.js';
 import { registerServiceWorker, installSinkBadge, sinkState, activeMode } from './sink.js';
 import { installIceModeBadge } from './webrtc/mode.js';
+import { isSoundEnabled, toggleSound } from './sound.js';
 
 // Room ID
 const room_id = window.location.pathname.substring(1)
@@ -98,6 +99,8 @@ async function onLoad() {
     dom.transfer_div.style.display = 'block'
     dom.transfer_url_value.textContent = `${window.location.origin}/${new_room_id}`
     dom.transfer_users_list_host_name.innerHTML = user.name + ' (You)'
+    const hostAvatar = document.getElementById('transfer-users-list-host-avatar');
+    if (hostAvatar) hostAvatar.innerHTML = getIdenticonSVG(user.name, 18);
     if (dom.transfer_users_list_host_os) {
       dom.transfer_users_list_host_os.innerHTML = getOSIconSVG(user.os, 16);
     }
@@ -254,7 +257,10 @@ function changeName() {
 
 function changeNameSubmit() {
   // Update name
-  user.changeName(dom.name_modal_value.value.trim())
+  const newName = dom.name_modal_value.value.trim();
+  user.changeName(newName);
+  const hostAvatar = document.getElementById('transfer-users-list-host-avatar');
+  if (hostAvatar) hostAvatar.innerHTML = getIdenticonSVG(user.name, 18);
 }
 
 // Copy Room url
@@ -378,6 +384,85 @@ function cancelDownloadAll() {
   user.downloadAllCancel()
 }
 
+// Sound Toggle
+function updateSoundUI() {
+  const enabled = isSoundEnabled();
+  if (dom.sound_icon_on && dom.sound_icon_off) {
+    dom.sound_icon_on.style.display = enabled ? 'inline-block' : 'none';
+    dom.sound_icon_off.style.display = enabled ? 'none' : 'inline-block';
+  }
+}
+
+function soundClick() {
+  const enabled = toggleSound();
+  updateSoundUI();
+  showToast(enabled ? 'Audio cues enabled' : 'Audio cues muted');
+}
+
+// Checksum Copy
+function copyChecksum() {
+  const hash = dom.checksum_modal_hash?.textContent;
+  if (!hash) return;
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(hash);
+  } else {
+    const ta = document.createElement('textarea');
+    ta.value = hash;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+  }
+  showToast('Checksum copied to clipboard.');
+}
+
+// Shortcuts Modal
+function openShortcutsModal() {
+  if (dom.shortcuts_modal && typeof bootstrap !== 'undefined') {
+    const modal = new bootstrap.Modal(dom.shortcuts_modal);
+    modal.show();
+  }
+}
+
+// Global Keyboard Shortcuts
+function initKeyboardShortcuts() {
+  window.addEventListener('keydown', (e) => {
+    const tag = e.target.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || e.target.isContentEditable) return;
+
+    // Cmd/Ctrl + O: Open file picker
+    if ((e.metaKey || e.ctrlKey) && (e.key === 'o' || e.key === 'O')) {
+      e.preventDefault();
+      dom.transfer_select_file_input?.click();
+      return;
+    }
+
+    // Cmd/Ctrl + C: Copy room link (when nothing is selected)
+    if ((e.metaKey || e.ctrlKey) && (e.key === 'c' || e.key === 'C')) {
+      const sel = window.getSelection()?.toString();
+      if (!sel) {
+        e.preventDefault();
+        copyURL();
+        return;
+      }
+    }
+
+    // '?' key: Open shortcuts cheatsheet modal
+    if (e.key === '?' || (e.shiftKey && e.key === '/')) {
+      e.preventDefault();
+      openShortcutsModal();
+      return;
+    }
+
+    // 'q' or 'Q': Open QR code modal
+    if (e.key === 'q' || e.key === 'Q') {
+      e.preventDefault();
+      openQRModal();
+      return;
+    }
+  });
+}
+
 // Bind all event handlers. The CSP forbids inline handlers (script-src 'self'),
 // so every element that used onclick/onkeypress/onchange in index.html is wired
 // up here instead.
@@ -395,6 +480,9 @@ function bindUI() {
   on('transfer-share-btn', 'click', shareRoom);
   on('transfer-qr-btn', 'click', openQRModal);
   on('transfer-qr-code', 'click', openQRModal);
+  on('sound-toggle-btn', 'click', soundClick);
+  on('shortcuts-btn', 'click', openShortcutsModal);
+  on('checksum-modal-copy', 'click', copyChecksum);
   on('transfer-select-file', 'click', (e) => {
     e.stopPropagation();
     dom.transfer_select_file_input?.click();
@@ -414,14 +502,16 @@ function bindUI() {
   onEnter('name-modal-value', changeNameSubmit);
   on('name-modal-confirm', 'click', changeNameSubmit);
   on('download-modal-cancel', 'click', cancelDownloadAll);
+
+  updateSoundUI();
+  initKeyboardShortcuts();
 }
 
-// Drag and Drop on dropzone and transfer-div
+// Drag and Drop on dropzone, transfer-div, and full-window frosted overlay
 function initDropZone() {
   const transferDiv = document.getElementById('transfer-div');
   const dropzoneEl = document.getElementById('dropzone');
-  const targets = [transferDiv, dropzoneEl].filter(Boolean);
-  if (targets.length === 0) return;
+  const dragOverlay = document.getElementById('drag-overlay');
 
   // Prevent browser default drag behavior globally
   window.addEventListener('dragover', (e) => e.preventDefault());
@@ -429,43 +519,40 @@ function initDropZone() {
 
   let dragCounter = 0;
 
-  for (const target of targets) {
-    target.addEventListener('dragenter', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      dragCounter++;
-      dropzoneEl?.classList.add('drag-over');
-      transferDiv?.classList.add('drag-over');
-    });
+  window.addEventListener('dragenter', (e) => {
+    e.preventDefault();
+    dragCounter++;
+    if (dragOverlay) dragOverlay.style.display = 'flex';
+    dropzoneEl?.classList.add('drag-over');
+    transferDiv?.classList.add('drag-over');
+  });
 
-    target.addEventListener('dragover', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-    });
+  window.addEventListener('dragover', (e) => {
+    e.preventDefault();
+  });
 
-    target.addEventListener('dragleave', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      dragCounter--;
-      if (dragCounter <= 0) {
-        dragCounter = 0;
-        dropzoneEl?.classList.remove('drag-over');
-        transferDiv?.classList.remove('drag-over');
-      }
-    });
-
-    target.addEventListener('drop', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
+  window.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    dragCounter--;
+    if (dragCounter <= 0) {
       dragCounter = 0;
+      if (dragOverlay) dragOverlay.style.display = 'none';
       dropzoneEl?.classList.remove('drag-over');
       transferDiv?.classList.remove('drag-over');
-      const files = e.dataTransfer?.files;
-      if (files && files.length > 0 && user) {
-        user.addFiles(files);
-      }
-    });
-  }
+    }
+  });
+
+  window.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dragCounter = 0;
+    if (dragOverlay) dragOverlay.style.display = 'none';
+    dropzoneEl?.classList.remove('drag-over');
+    transferDiv?.classList.remove('drag-over');
+    const files = e.dataTransfer?.files;
+    if (files && files.length > 0 && user) {
+      user.addFiles(files);
+    }
+  });
 }
 
 // Function to generate a random string in the format XXX-XXXX-XXX.
