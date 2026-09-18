@@ -3,8 +3,8 @@ import { applyIceMode } from './mode.js';
 import { Peer } from './peer.js';
 
 const CHUNK_SIZE = 16 * 1024;          // 16 KiB — under SCTP message-size limits on every browser.
-const HIGH_WATER = 1 << 20;            // 1 MiB — pause reads when DataChannel buffer is this full.
-const LOW_WATER  = 1 << 18;            // 256 KiB — resume when it drains to this level.
+const HIGH_WATER = 64 * 1024;          // 64 KiB — pause reads when DataChannel buffer reaches 64 KB cap.
+const LOW_WATER  = 16 * 1024;          // 16 KiB — resume when it drains to this level.
 const PROGRESS_REPORT_INTERVAL = 256 * 1024;  // Send a progress update every 256 KiB received.
 // Aligned with ICE's own recovery window: browsers keep retrying a 'disconnected'
 // session for ~30s before declaring 'failed', so give up no earlier than they do.
@@ -14,6 +14,23 @@ const ICE_DISCONNECT_GRACE_MS = 30_000;
 const RECEIVER_STALL_TIMEOUT_MS = 15_000;
 // Sender cancel reasons after which the receiver can still resume with a new connection.
 const RESUMABLE_CANCEL_REASONS = new Set(['connection-lost', 'send-failed']);
+
+export function formatSpeed(bytesPerSec) {
+  if (!bytesPerSec || bytesPerSec < 1024) return '';
+  if (bytesPerSec >= 1024 * 1024) {
+    return `${(bytesPerSec / (1024 * 1024)).toFixed(1)} MB/s`;
+  }
+  return `${(bytesPerSec / 1024).toFixed(0)} KB/s`;
+}
+
+export function formatEta(seconds) {
+  if (seconds === null || seconds === undefined || !Number.isFinite(seconds)) return '';
+  if (seconds < 1) return 'Done';
+  if (seconds < 60) return `ETA: ${seconds}s`;
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `ETA: ${m}m ${s}s`;
+}
 
 // Null-safe DOM helpers. WebRTC event handlers fire asynchronously and can outlive the
 // UI elements they reference (e.g., if the file row is being torn down concurrently).
@@ -67,6 +84,45 @@ export class File {
   _lastProgressReportAt = 0;
   // Serializes sink writes; FS Access writables lock on concurrent writes. Reset in _onHeader.
   _writeChain = Promise.resolve();
+  _speedSamples = [];
+  _speed = 0;
+  _eta = null;
+
+  _recordProgress(currentBytes) {
+    const now = Date.now();
+    if (!this._speedSamples) this._speedSamples = [];
+    this._speedSamples.push({ t: now, b: currentBytes });
+    while (this._speedSamples.length > 2 && (now - this._speedSamples[0].t) > 2000) {
+      this._speedSamples.shift();
+    }
+    if (this._speedSamples.length >= 2) {
+      const oldest = this._speedSamples[0];
+      const dt = (now - oldest.t) / 1000;
+      const db = currentBytes - oldest.b;
+      if (dt > 0.15) {
+        this._speed = Math.max(0, db / dt);
+        const remaining = Math.max(0, this._size - currentBytes);
+        this._eta = this._speed > 1024 ? Math.round(remaining / this._speed) : null;
+      }
+    }
+  }
+
+  _renderTransferProgress(progress, currentBytes) {
+    this._recordProgress(currentBytes);
+    const speedStr = formatSpeed(this._speed);
+    const etaStr = formatEta(this._eta);
+
+    $set(`file-${this._id}-progress`, 'textContent', `${progress}% | `);
+    const speedEl = document.getElementById(`file-${this._id}-speed`);
+    if (speedEl) speedEl.textContent = speedStr;
+    const etaEl = document.getElementById(`file-${this._id}-eta`);
+    if (etaEl) etaEl.textContent = etaStr;
+    const barEl = document.getElementById(`file-${this._id}-progress-bar`);
+    if (barEl) {
+      barEl.style.width = `${progress}%`;
+      barEl.setAttribute('aria-valuenow', progress);
+    }
+  }
 
   constructor(file) {
     this._id = file.id
@@ -285,9 +341,15 @@ export class File {
         throw new Error('transfer failed: send-failed');
       }
       sent = end;
+      const senderProgress = this._size > 0 ? Math.floor(sent / this._size * 100) : 0;
+      this._renderTransferProgress(senderProgress, sent);
     }
 
     if (failure) {
+      if (entry && entry.interval) {
+        clearInterval(entry.interval);
+        entry.interval = null;
+      }
       // channel-closed: the receiver already sees the close. connection-lost: the
       // watchdog already sent cancel + closed. Throwing lets user.js notify the
       // requester over the room connection and release the outbound slot.
@@ -299,6 +361,11 @@ export class File {
       await this._awaitDrain(dc);
       dc.send(JSON.stringify({ type: 'end' }));
     } catch {}
+
+    if (entry && entry.interval) {
+      clearInterval(entry.interval);
+      entry.interval = null;
+    }
   }
 
   // Sender side: tell the receiver a transfer died abnormally (read error, send
@@ -590,6 +657,10 @@ export class File {
     this._flushed = 0;
     if (message) {
       $set(`file-${this._id}-progress`, 'textContent', '');
+      $set(`file-${this._id}-speed`, 'textContent', '');
+      $set(`file-${this._id}-eta`, 'textContent', '');
+      const barEl = document.getElementById(`file-${this._id}-progress-bar`);
+      if (barEl) barEl.style.width = '0%';
       $style(`file-${this._id}-icon-loading`, 'display', 'none');
       $style(`file-${this._id}-icon-success`, 'display', 'none');
       $style(`file-${this._id}-icon-failed`, 'display', 'block');
@@ -684,7 +755,7 @@ export class File {
     // Progress UI (single-file mode)
     const progress = this._size > 0 ? Math.floor(this._transferred / this._size * 100) : 0;
     if (!this._zip) {
-      $set(`file-${this._id}-progress`, 'textContent', `${progress}% | `);
+      this._renderTransferProgress(progress, this._transferred);
     }
 
     // Notify the sender of progress, throttled.
@@ -693,7 +764,14 @@ export class File {
       this._transferred - this._lastProgressReportAt >= PROGRESS_REPORT_INTERVAL;
     if (shouldReport) {
       this._lastProgressReportAt = this._transferred;
-      try { conn.dataChannel.send(JSON.stringify({ type: 'progress', percent: progress })); } catch {}
+      try {
+        conn.dataChannel.send(JSON.stringify({
+          type: 'progress',
+          percent: progress,
+          speed: this._speed,
+          eta: this._eta,
+        }));
+      } catch {}
     }
   }
 
@@ -739,6 +817,10 @@ export class File {
 
       // UI: success state
       $set(`file-${this._id}-progress`, 'textContent', '');
+      $set(`file-${this._id}-speed`, 'textContent', '');
+      $set(`file-${this._id}-eta`, 'textContent', '');
+      const barEl = document.getElementById(`file-${this._id}-progress-bar`);
+      if (barEl) barEl.style.width = '100%';
       $style(`file-${this._id}-download`, 'display', 'block');
       $style(`file-${this._id}-abort`, 'display', 'none');
       $style(`file-${this._id}-icon-loading`, 'display', 'none');
@@ -756,7 +838,9 @@ export class File {
   _onFileProgress(conn, data) {
     // Sender-side: track per-receiver progress so 'See details' is accurate.
     if (data && conn) {
-      this._remotePeers[conn.peer].progress = data.progress
+      this._remotePeers[conn.peer].progress = data.progress;
+      if (data.speed !== undefined) this._remotePeers[conn.peer].speed = data.speed;
+      if (data.eta !== undefined) this._remotePeers[conn.peer].eta = data.eta;
     }
 
     const onlinePeers = Object.values(this._remotePeers).filter(x => x.online)
@@ -764,11 +848,26 @@ export class File {
     const overall_progress = onlinePeers.length == 0 ? 0 : Math.floor(totalProgress / onlinePeers.length)
 
     $set(`file-${this._id}-progress`, 'textContent', `${overall_progress}% | `);
+    const barEl = document.getElementById(`file-${this._id}-progress-bar`);
+    if (barEl) barEl.style.width = `${overall_progress}%`;
+
+    const activePeer = onlinePeers.find(x => x.speed);
+    if (activePeer) {
+      const speedEl = document.getElementById(`file-${this._id}-speed`);
+      if (speedEl) speedEl.textContent = formatSpeed(activePeer.speed);
+      const etaEl = document.getElementById(`file-${this._id}-eta`);
+      if (etaEl) etaEl.textContent = formatEta(activePeer.eta);
+    }
 
     if (overall_progress == 100) {
       $style(`file-${this._id}-abort`, 'display', 'none');
       $style(`file-${this._id}-icon-loading`, 'display', 'none');
       $style(`file-${this._id}-icon-success`, 'display', 'block');
+      const speedEl = document.getElementById(`file-${this._id}-speed`);
+      if (speedEl) speedEl.textContent = '';
+      const etaEl = document.getElementById(`file-${this._id}-eta`);
+      if (etaEl) etaEl.textContent = '';
+      if (barEl) barEl.style.width = '100%';
     }
     else if (!this._aborted && onlinePeers.filter(x => !x.aborted).length == 0) {
       const anyLost = Object.values(this._remotePeers).some(x => x.lost);

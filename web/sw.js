@@ -1,20 +1,99 @@
-// FileSync streaming-download Service Worker.
+// AirRelay streaming-download & PWA Service Worker.
 //
+// 1. Streaming downloads:
 // The page registers a transfer by posting `{ type: 'register', id, name, size, mime, port }`
 // where `port` is one end of a MessageChannel. The page then navigates (or anchor-clicks)
 // to `/__download/{id}`; this SW intercepts that fetch and returns a Response whose body
 // is a ReadableStream fed by chunks pushed through the port.
 //
-// Port messages from the page:
-//   ArrayBuffer | Uint8Array  -> enqueued as a chunk
-//   { type: 'end' }           -> stream is closed cleanly
-//   { type: 'abort' }         -> stream is errored (browser will show an incomplete download)
+// 2. Web Share Target API:
+// Native OS shares (Photos, Files) target POST /share-target with multipart/form-data.
+// Files are persisted to IndexedDB and the user is redirected to the active AirRelay session.
+//
+// 3. Offline Shell Cache:
+// Pre-caches application shell assets so AirRelay launches instantly as an installable PWA.
 
+const CACHE_NAME = 'airrelay-shell-v1';
+const SHELL_ASSETS = [
+  '/',
+  '/index.html',
+  '/manifest.webmanifest',
+  '/css/bootstrap.min.css',
+  '/css/style.css',
+  '/js/theme.js',
+  '/js/vendors/bootstrap.bundle.min.js',
+  '/js/vendors/qrious.min.js',
+  '/js/vendors/client-zip.min.js',
+  '/js/modules/script.js',
+  '/js/modules/dom.js',
+  '/js/modules/sink.js',
+  '/js/modules/devBadge.js',
+  '/js/modules/webrtc/turn.js',
+  '/js/modules/webrtc/mode.js',
+  '/js/modules/webrtc/peer.js',
+  '/js/modules/webrtc/user.js',
+  '/js/modules/webrtc/file.js',
+  '/assets/icon.png',
+  '/assets/comic.png',
+  '/assets/comic-dark.png',
+  '/assets/fonts/inter-latin.woff2'
+];
+
+const DB_NAME = 'airrelay_pwa_db';
+const STORE_NAME = 'shared_target_files';
 const transfers = new Map();
 const KEEPALIVE_MS = 15_000;
 
-self.addEventListener('install', () => self.skipWaiting());
-self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
+function openSharedDb() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, 1);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        db.createObjectStore(STORE_NAME, { keyPath: 'id', autoIncrement: true });
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function saveSharedFiles(files) {
+  const db = await openSharedDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const store = tx.objectStore(STORE_NAME);
+    for (const f of files) {
+      store.add({
+        name: f.name,
+        type: f.type,
+        size: f.size,
+        file: f,
+        timestamp: Date.now()
+      });
+    }
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+self.addEventListener('install', (event) => {
+  self.skipWaiting();
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL_ASSETS).catch(() => {}))
+  );
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    Promise.all([
+      self.clients.claim(),
+      caches.keys().then((keys) =>
+        Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
+      )
+    ])
+  );
+});
 
 self.addEventListener('message', (event) => {
   const msg = event.data;
@@ -62,27 +141,62 @@ self.addEventListener('message', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
-  const match = url.pathname.match(/^\/__download\/([A-Za-z0-9._-]+)$/);
-  if (!match) return;
 
-  const id = match[1];
-  const entry = transfers.get(id);
-  if (!entry) {
-    event.respondWith(new Response('Transfer not found or expired.', { status: 404 }));
+  // 1. Web Share Target POST handler
+  if (event.request.method === 'POST' && url.pathname === '/share-target') {
+    event.respondWith((async () => {
+      try {
+        const formData = await event.request.formData();
+        const files = formData.getAll('files');
+        if (files && files.length > 0) {
+          await saveSharedFiles(files);
+        }
+      } catch (err) {
+        console.error('Failed to process shared target files in SW:', err);
+      }
+      return Response.redirect('/?shared=1', 303);
+    })());
     return;
   }
 
-  const headers = new Headers({
-    'Content-Type': entry.mime,
-    'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(entry.name)}`,
-    'Cache-Control': 'no-store',
-    'X-Content-Type-Options': 'nosniff',
-  });
-  if (Number.isFinite(entry.size) && entry.size > 0) {
-    headers.set('Content-Length', String(entry.size));
+  // 2. Streaming download handler
+  const match = url.pathname.match(/^\/__download\/([A-Za-z0-9._-]+)$/);
+  if (match) {
+    const id = match[1];
+    const entry = transfers.get(id);
+    if (!entry) {
+      event.respondWith(new Response('Transfer not found or expired.', { status: 404 }));
+      return;
+    }
+
+    const headers = new Headers({
+      'Content-Type': entry.mime,
+      'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(entry.name)}`,
+      'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff',
+    });
+    if (Number.isFinite(entry.size) && entry.size > 0) {
+      headers.set('Content-Length', String(entry.size));
+    }
+
+    event.respondWith(new Response(entry.stream, { headers }));
+    return;
   }
 
-  event.respondWith(new Response(entry.stream, { headers }));
+  // 3. Static shell caching (network-first for app updates, cache fallback for offline)
+  if (event.request.method === 'GET' && !url.pathname.startsWith('/api') && !url.pathname.startsWith('/ws')) {
+    event.respondWith(
+      fetch(event.request).catch(() =>
+        caches.match(event.request).then((res) => {
+          if (res) return res;
+          if (event.request.mode === 'navigate') {
+            return caches.match('/');
+          }
+          return null;
+        })
+      )
+    );
+  }
 });
 
 // Garbage-collect transfers that registered but never had their /__download/{id} fetched.

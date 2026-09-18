@@ -52,9 +52,84 @@ const _RESUME_INIT_TIMEOUT_MS = 15_000;
 // Object.prototype members.
 const _makeWireMap = () => Object.create(null);
 
+export function detectOS() {
+  if (typeof navigator === 'undefined') return 'generic';
+  const ua = (navigator.userAgent || '').toLowerCase();
+  const platform = (navigator.platform || '').toLowerCase();
+  const uaData = navigator.userAgentData;
+
+  if (uaData && uaData.platform) {
+    const p = uaData.platform.toLowerCase();
+    if (p.includes('mac') || p.includes('ios')) return 'apple';
+    if (p.includes('win')) return 'windows';
+    if (p.includes('android')) return 'android';
+    if (p.includes('linux')) return 'linux';
+  }
+
+  if (/iphone|ipad|ipod|macintosh|mac os x/.test(ua) || /mac/.test(platform)) return 'apple';
+  if (/windows|win32|win64/.test(ua) || /win/.test(platform)) return 'windows';
+  if (/android/.test(ua)) return 'android';
+  if (/linux/.test(ua) || /linux/.test(platform)) return 'linux';
+
+  return 'generic';
+}
+
+export function getOSIconSVG(os, size = 16) {
+  switch (os) {
+    case 'apple':
+      return `<svg class="os-icon os-apple" width="${size}" height="${size}" viewBox="0 0 170 170" fill="currentColor" aria-label="Apple">
+        <path d="M150.37 130.25c-2.45 5.66-5.35 10.87-8.71 15.66-4.58 6.53-8.33 11.05-11.22 13.56-4.48 4.12-9.28 6.23-14.42 6.35-3.69 0-8.14-1.05-13.32-3.18-5.19-2.12-9.97-3.17-14.34-3.17-4.58 0-9.49 1.05-14.75 3.17-5.26 2.13-9.5 3.24-12.74 3.35-4.35.13-9.16-1.9-14.42-6.08-3.69-3.04-7.67-7.81-11.96-14.34-6.41-9.78-11.48-20.98-15.19-33.6-3.71-12.63-5.57-24.28-5.57-34.96 0-14.34 3.73-26.08 11.19-35.21 7.46-9.13 16.71-13.78 27.75-13.96 4.35 0 9.16 1.05 14.42 3.17 5.26 2.12 9.07 3.24 11.44 3.35 2.13 0 6.07-1.17 11.83-3.53 5.76-2.35 10.74-3.35 14.96-2.99 15.86 1.05 27.78 7.31 35.76 18.77-13.94 8.44-20.76 19.99-20.46 34.65.29 11.44 4.54 20.97 12.74 28.59 4.12 3.8 8.78 6.64 13.98 8.52-2.82 8.27-6.52 16.77-11.1 25.5zm-33.15-117.84c.14 3.32-.48 6.78-1.87 10.37-1.39 3.59-3.51 6.94-6.35 10.05-3.04 3.32-6.55 5.92-10.53 7.8-3.98 1.88-7.79 2.99-11.44 3.34-.14-3.32.48-6.72 1.87-10.2 1.39-3.48 3.55-6.84 6.47-10.08 3.04-3.32 6.55-5.96 10.53-7.92 3.98-1.96 7.76-3.07 11.32-3.36z"/>
+      </svg>`;
+    case 'windows':
+      return `<svg class="os-icon os-windows" width="${size}" height="${size}" viewBox="0 0 16 16" fill="currentColor" aria-label="Windows">
+        <path d="M0 2.222v5.438h7.243V1.2L0 2.222zm0 6.1v5.457l7.243 1.022v-6.48H0zm7.986-7.34v6.677H16V0L7.986.982zM16 8.322H7.986v6.697L16 16V8.322z"/>
+      </svg>`;
+    case 'android':
+      return `<svg class="os-icon os-android" width="${size}" height="${size}" viewBox="0 0 16 16" fill="currentColor" aria-label="Android">
+        <path d="M2.76 3.061l-1.074-1.073a.473.473 0 0 0-.668.668l1.01 1.01a6.602 6.602 0 0 0-1.003 3.334h13.95a6.603 6.603 0 0 0-1.004-3.334l1.01-1.01a.473.473 0 0 0-.668-.668l-1.074 1.073A6.52 6.52 0 0 0 8 2a6.52 6.52 0 0 0-5.24 1.061zM4.5 5.5a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5zm7 0a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5zM1 8v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8H1z"/>
+      </svg>`;
+    case 'linux':
+      return `<svg class="os-icon os-linux" width="${size}" height="${size}" viewBox="0 0 16 16" fill="currentColor" aria-label="Linux">
+        <path d="M8 0c-2.3 0-3.5 1.5-3.5 3.5 0 .8.2 1.9.6 2.8C4.4 7 3.5 8.3 3.5 10c0 1.5.8 2.8 2 3.4-.2.4-.5.8-1 1.1-.3.2-.2.6.2.6 1.8 0 3.2-.9 3.8-2.1.2 0 .3 0 .5 0s.3 0 .5 0c.6 1.2 2 2.1 3.8 2.1.4 0 .5-.4.2-.6-.5-.3-.8-.7-1-1.1 1.2-.6 2-1.9 2-3.4 0-1.7-.9-3-1.6-3.7.4-.9.6-2 .6-2.8C11.5 1.5 10.3 0 8 0zM6.5 3.5c.4 0 .7.3.7.7s-.3.8-.7.8-.7-.4-.7-.8.3-.7.7-.7zm3 0c.4 0 .7.3.7.7s-.3.8-.7.8-.7-.4-.7-.8.3-.7.7-.7z"/>
+      </svg>`;
+    default:
+      return `<svg class="os-icon os-device" width="${size}" height="${size}" viewBox="0 0 16 16" fill="currentColor" aria-label="Device">
+        <path d="M11 1a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h6zM5 0a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V2a2 2 0 0 0-2-2H5z"/>
+        <path d="M8 14a1 1 0 1 0 0-2 1 1 0 0 0 0 2z"/>
+      </svg>`;
+  }
+}
+
+export function getFileTypeInfo(filename) {
+  const ext = (filename || '').split('.').pop().toLowerCase();
+  if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico', 'avif'].includes(ext)) {
+    return { type: 'image', color: '#38bdf8', label: 'IMG' };
+  }
+  if (['mp4', 'mov', 'avi', 'mkv', 'webm', 'm4v'].includes(ext)) {
+    return { type: 'video', color: '#a855f7', label: 'VID' };
+  }
+  if (['mp3', 'wav', 'flac', 'aac', 'ogg', 'm4a'].includes(ext)) {
+    return { type: 'audio', color: '#ec4899', label: 'AUD' };
+  }
+  if (['pdf'].includes(ext)) {
+    return { type: 'pdf', color: '#f43f5e', label: 'PDF' };
+  }
+  if (['zip', 'tar', 'gz', 'rar', '7z', 'bz2'].includes(ext)) {
+    return { type: 'archive', color: '#eab308', label: 'ZIP' };
+  }
+  if (['js', 'ts', 'py', 'html', 'css', 'json', 'cpp', 'c', 'go', 'rs', 'java', 'sql', 'sh', 'md'].includes(ext)) {
+    return { type: 'code', color: '#10b981', label: 'CODE' };
+  }
+  if (['doc', 'docx', 'txt', 'rtf', 'odt', 'pages', 'xlsx', 'xls', 'csv', 'pptx', 'ppt'].includes(ext)) {
+    return { type: 'doc', color: '#3b82f6', label: 'DOC' };
+  }
+  return { type: 'file', color: '#94a3b8', label: 'FILE' };
+}
+
 export class User {
   _name = this._generate_name();
   _password = '';
+  _os = detectOS();
   _peer = null;
   _remotePeers = _makeWireMap();
   _room_id;
@@ -87,6 +162,10 @@ export class User {
 
   get isHost() {
     return this._isHost
+  }
+
+  get os() {
+    return this._os
   }
 
   get files() {
@@ -311,7 +390,7 @@ export class User {
       document.getElementById('transfer-users-list-host-name').textContent = `${this._name} (You)`
 
       // Notify all peers
-      const peers_list = [{"id": this._peer.id, "name": this._name }, ...Object.entries(this._remotePeers).map(([k, v]) => ({"id": k, "name": v.name}))];
+      const peers_list = [{"id": this._peer.id, "name": this._name, "os": this._os }, ...Object.entries(this._remotePeers).map(([k, v]) => ({"id": k, "name": v.name, "os": v.os || 'generic'}))];
       for (let p of Object.values(this._remotePeers)) {
         p.conn.send({'webrtc-peers': peers_list})
       }
@@ -1044,11 +1123,11 @@ export class User {
 
       // Send credentials to the host to authenticate
       if (!this._password) {
-        conn.send({"webrtc-connect": {"name": this._name}})
+        conn.send({"webrtc-connect": {"name": this._name, "os": this._os}})
       }
       else {
         const hashedPassword = await this._hashPassword(this._password);
-        conn.send({"webrtc-connect": {"name": this._name, "password": hashedPassword}})
+        conn.send({"webrtc-connect": {"name": this._name, "os": this._os, "password": hashedPassword}})
       }
     }
 
@@ -1071,13 +1150,14 @@ export class User {
         // Add peer to the peers list. Clamp the inbound name to a sane length; it's
         // user-controlled and gets rendered in every connected peer's DOM.
         const cleanName = _sanitizeName(data['webrtc-connect']['name']);
+        const peerOs = typeof data['webrtc-connect']['os'] === 'string' ? data['webrtc-connect']['os'] : 'generic';
 
         // A retry from the same peer id replaces the entry — clear the old interval
         // first or it leaks (see the peer-side comment above).
         const prev = this._remotePeers[conn.peer];
         if (prev?.interval) clearInterval(prev.interval);
 
-        this._remotePeers[conn.peer] = {"name": cleanName, "conn": conn,  "interval": setInterval(() => this._isAlive(conn.peer), 1000)}
+        this._remotePeers[conn.peer] = {"name": cleanName, "os": peerOs, "conn": conn,  "interval": setInterval(() => this._isAlive(conn.peer), 1000)}
         this._watchIce(conn, this._remotePeers[conn.peer])
 
         // Show peer connected status
@@ -1085,11 +1165,11 @@ export class User {
         dom.transfer_status_success.style.display = 'inline-block'
 
         // Define peers list (including host user)
-        const peers_list = [{"id": this._peer.id, "name": this._name }, ...Object.entries(this._remotePeers).map(([k, v]) => ({"id": k, "name": v.name}))];
+        const peers_list = [{"id": this._peer.id, "name": this._name, "os": this._os }, ...Object.entries(this._remotePeers).map(([k, v]) => ({"id": k, "name": v.name, "os": v.os || 'generic'}))];
 
         // Build user's list. conn.peer is the remote's peer id — already validated by
         // the signaling server's id-format check at /ws register time.
-        this._addUserUI({"id": conn.peer, "name": this._remotePeers[conn.peer].name})
+        this._addUserUI({"id": conn.peer, "name": this._remotePeers[conn.peer].name, "os": peerOs})
 
         // Send confirmation
         conn.send({'webrtc-connect-response': {"status": "welcome", "secured": this._password.trim().length != 0}})
@@ -1155,7 +1235,7 @@ export class User {
       if (nameEl) nameEl.textContent = newName;
 
       // Notify all peers
-      const peers_list = [{"id": this._peer.id, "name": this._name }, ...Object.entries(this._remotePeers).map(([k, v]) => ({"id": k, "name": v.name}))];
+      const peers_list = [{"id": this._peer.id, "name": this._name, "os": this._os }, ...Object.entries(this._remotePeers).map(([k, v]) => ({"id": k, "name": v.name, "os": v.os || 'generic'}))];
       for (let p of Object.values(this._remotePeers)) {
         p.conn.send({'webrtc-peers': peers_list})
       }
@@ -1174,24 +1254,33 @@ export class User {
         // name is clamped to a sane length before being inserted into the DOM.
         if (!p || typeof p !== 'object' || !_isValidId(p.id)) continue;
         p.name = _sanitizeName(p.name);
+        const peerOs = typeof p.os === 'string' ? p.os : 'generic';
 
         // Peer is the Host
         if (p.id == this._room_id) {
-          if (this._remotePeers[p.id]) this._remotePeers[p.id].name = p.name
+          if (this._remotePeers[p.id]) {
+            this._remotePeers[p.id].name = p.name;
+            this._remotePeers[p.id].os = peerOs;
+          }
           dom.transfer_users_list_host_name.textContent = p.name
+          const hostOsEl = document.getElementById('transfer-users-list-host-os');
+          if (hostOsEl) hostOsEl.innerHTML = getOSIconSVG(peerOs);
         }
         // Peer is not the Host
         else {
           if (!(p.id in this._remotePeers)) {
             // New peer — add UI and create the entry.
             this._addUserUI(p)
-            this._remotePeers[p.id] = {"name": p.name}
+            this._remotePeers[p.id] = {"name": p.name, "os": peerOs}
           } else {
             // Existing entry — update name in place so any other fields on the entry
             // (intervals, etc.) survive.
             this._remotePeers[p.id].name = p.name
+            this._remotePeers[p.id].os = peerOs;
             const nameEl = document.getElementById(`user-${p.id}-name`);
             if (nameEl) nameEl.textContent = `${p.name} ${p.id == this._peer.id ? ' (You)' : ''}`
+            const osEl = document.getElementById(`user-${p.id}-os`);
+            if (osEl) osEl.innerHTML = getOSIconSVG(peerOs);
           }
         }
 
@@ -1540,14 +1629,16 @@ export class User {
     // user-controlled and inserted via textContent below — never via innerHTML.
     let li = document.createElement('li')
     li.setAttribute('id', `user-${user.id}`)
-    li.setAttribute('class', 'list-group-item')
+    li.setAttribute('class', 'user-badge-item list-group-item')
+    const peerOs = user.os || 'generic';
     li.innerHTML = `
-      <span title="User">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="#198754" class="bi bi-lightning-charge-fill" viewBox="0 0 16 16" style="margin-bottom:5px">
-          <path d="M11.251.068a.5.5 0 0 1 .227.58L9.677 6.5H13a.5.5 0 0 1 .364.843l-8 8.5a.5.5 0 0 1-.842-.49L6.323 9.5H3a.5.5 0 0 1-.364-.843l8-8.5a.5.5 0 0 1 .615-.09z"/>
-        </svg>
-      </span>
-      <span id="user-${user.id}-name"></span>
+      <div class="user-badge-pill">
+        <span class="user-os-icon" id="user-${user.id}-os" title="OS: ${peerOs}">
+          ${getOSIconSVG(peerOs, 16)}
+        </span>
+        <span class="user-badge-name" id="user-${user.id}-name"></span>
+        <span class="user-status-dot online" title="Online"></span>
+      </div>
     `
     dom.transfer_users_list.appendChild(li)
     const nameEl = document.getElementById(`user-${user.id}-name`);
@@ -1581,56 +1672,73 @@ export class User {
     dom.transfer_files_list_empty.remove()
     let li = document.createElement('li')
     li.setAttribute('id', `file-${file.id}`)
-    li.setAttribute('class', 'list-group-item')
+    li.setAttribute('class', 'file-card list-group-item')
 
     const isMine = file.owner_id == this._peer.id;
+    const typeInfo = getFileTypeInfo(file.name);
     li.innerHTML = `
-      <div class="row align-items-center">
-        <div class="col-auto" style="padding-right: 0">
-          <div id="file-${file.id}-icon-loading" title="${isMine ? 'Uploading file': 'Downloading file'}" class="col-auto spinner-border" style="margin-right: 12px; color: #0d6efd; width: 1.4rem; height: 1.4rem; --bs-spinner-border-width: 0.15em; margin-top:3px; display: none"></div>
-          <div id="file-${file.id}-icon-success" title="${isMine ? 'File uploaded': 'File downloaded'}" style="margin-right: 12px; display: none">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="#198754" class="bi bi-check-circle-fill" viewBox="0 0 16 16">
-              <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zm-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/>
-            </svg>
+      <div class="file-card-content">
+        <div class="file-card-top">
+          <div class="file-card-info">
+            <div class="file-category-badge" style="background-color: ${typeInfo.color}15; color: ${typeInfo.color}; border: 1px solid ${typeInfo.color}30;">
+              ${typeInfo.label}
+            </div>
+            <div class="file-details-col">
+              <div class="file-name-row">
+                <span class="file-dir-icon" title="${isMine ? 'Sent by you' : 'Incoming file'}">
+                  ${isMine ? '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="display:inline-block"><path fill-rule="evenodd" d="M8 12a.5.5 0 0 0 .5-.5V5.707l2.146 2.147a.5.5 0 0 0 .708-.708l-3-3a.5.5 0 0 0-.708 0l-3 3a.5.5 0 1 0 .708.708L7.5 5.707V11.5a.5.5 0 0 0 .5.5z"/></svg>' : '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="display:inline-block"><path fill-rule="evenodd" d="M8 4a.5.5 0 0 1 .5.5v5.793l2.146-2.147a.5.5 0 0 1 .708.708l-3 3a.5.5 0 0 1-.708 0l-3-3a.5.5 0 1 1 .708-.708L7.5 10.293V4.5A.5.5 0 0 1 8 4z"/></svg>'}
+                </span>
+                <span id="file-${file.id}-name" class="file-name-text"></span>
+              </div>
+              <div class="file-submeta">
+                <span id="file-${file.id}-info"></span>
+              </div>
+            </div>
           </div>
-          <div id="file-${file.id}-icon-failed" title="Failed" style="margin-right: 12px; display: none">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="#dc3545" class="bi bi-x-circle-fill" viewBox="0 0 16 16">
-              <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zM5.354 4.646a.5.5 0 1 0-.708.708L7.293 8l-2.647 2.646a.5.5 0 0 0 .708.708L8 8.707l2.646 2.647a.5.5 0 0 0 .708-.708L8.707 8l2.647-2.646a.5.5 0 0 0-.708-.708L8 7.293 5.354 4.646z"/>
-            </svg>
+
+          <div class="file-card-actions">
+            <div id="file-${file.id}-icon-loading" title="${isMine ? 'Uploading file': 'Downloading file'}" class="spinner-border text-primary" style="width: 1.3rem; height: 1.3rem; --bs-spinner-border-width: 0.15em; display: none"></div>
+            <div id="file-${file.id}-icon-success" title="${isMine ? 'File uploaded': 'File downloaded'}" class="file-status-icon success" style="display: none">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#10b981" viewBox="0 0 16 16">
+                <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zm-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/>
+              </svg>
+            </div>
+            <div id="file-${file.id}-icon-failed" title="Failed" class="file-status-icon failed" style="display: none">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#ef4444" viewBox="0 0 16 16">
+                <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zM5.354 4.646a.5.5 0 1 0-.708.708L7.293 8l-2.647 2.646a.5.5 0 0 0 .708.708L8 8.707l2.646 2.647a.5.5 0 0 0 .708-.708L8.707 8l2.647-2.646a.5.5 0 0 0-.708-.708L8 7.293 5.354 4.646z"/>
+              </svg>
+            </div>
+
+            <button id="file-${file.id}-details" class="btn-action-ghost" title="See details" style="display: ${isMine ? 'inline-flex' : 'none'}">
+              <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/><path d="m8.93 6.588-2.29.287-.082.38.45.083c.294.07.352.176.288.469l-.738 3.468c-.194.897.105 1.319.808 1.319.545 0 1.178-.252 1.465-.598l.088-.416c-.2.176-.492.246-.686.246-.275 0-.375-.193-.304-.533L8.93 6.588zM9 4.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/></svg>
+            </button>
+            <button id="file-${file.id}-remove" class="btn-action-danger" title="Remove file" style="display: ${isMine ? 'inline-flex' : 'none'}">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M2.146 2.854a.5.5 0 1 1 .708-.708L8 7.293l5.146-5.147a.5.5 0 0 1 .708.708L8.707 8l5.147 5.146a.5.5 0 0 1-.708.708L8 8.707l-5.146 5.147a.5.5 0 0 1-.708-.708L7.293 8 2.146 2.854Z"/></svg>
+            </button>
+            <button id="file-${file.id}-abort" class="btn-action-danger" title="Stop file download" style="display: none">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M5.5 5.5A.5.5 0 0 1 6 6v4a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v4a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v4a.5.5 0 0 0 1 0V6z"/><path d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/></svg>
+            </button>
+            <button id="file-${file.id}-download" class="btn-action-primary" title="Download file" style="display: ${isMine ? 'none' : 'inline-flex'}">
+              <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/><path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/></svg>
+              <span>Download</span>
+            </button>
           </div>
         </div>
 
-        <div class="col d-flex flex-column" style="overflow-x: hidden; padding-left:0px;">
-          <div style="margin-bottom: 5px; font-size: 0.875rem; font-weight: 500; text-align: left; word-break: break-all;">
-          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-arrow-up-short" viewBox="0 0 16 16"; style="margin-top:-3px; margin-right:-3px; margin-left:-5px; display: ${isMine ? 'block-inline' : 'none'}">
-            <path fill-rule="evenodd" d="M8 12a.5.5 0 0 0 .5-.5V5.707l2.146 2.147a.5.5 0 0 0 .708-.708l-3-3a.5.5 0 0 0-.708 0l-3 3a.5.5 0 1 0 .708.708L7.5 5.707V11.5a.5.5 0 0 0 .5.5z"/>
-          </svg>
-          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-arrow-down-short" viewBox="0 0 16 16" style="margin-top:-3px; margin-right:-3px; margin-left:-5px; display: ${isMine ? 'none' : 'block-inline'}">
-            <path fill-rule="evenodd" d="M8 4a.5.5 0 0 1 .5.5v5.793l2.146-2.147a.5.5 0 0 1 .708.708l-3 3a.5.5 0 0 1-.708 0l-3-3a.5.5 0 1 1 .708-.708L7.5 10.293V4.5A.5.5 0 0 1 8 4z"/>
-          </svg>
-          <span id="file-${file.id}-name"></span></div>
-          <div style="color: #636979; font-size: .9rem; font-weight: 500; overflow-x: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; margin-bottom:1px"><span id="file-${file.id}-progress"></span><span id="file-${file.id}-info"></span></div>
-          <div id="file-${file.id}-error" style="color: #dc3545; font-size: .9rem; font-weight: 500; overflow-x: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; margin-top:5px; margin-bottom:4px; display:none"></div>
-          <div id="file-${file.id}-details" style="color: #0d6efd; font-size: .9rem; font-weight: 500; text-align: left; padding-top:5px; padding-bottom:4px; padding-right:4px; cursor:pointer; display: ${isMine ? 'block' : 'none'}">See details</div>
+        <div class="file-progress-wrapper">
+          <div class="file-progress-track">
+            <div id="file-${file.id}-progress-bar" class="file-progress-fill" style="width: 0%"></div>
+          </div>
+          <div class="file-metrics-row">
+            <div class="metrics-left">
+              <span id="file-${file.id}-progress" class="metric-percent"></span>
+              <span id="file-${file.id}-speed" class="metric-speed"></span>
+            </div>
+            <span id="file-${file.id}-eta" class="metric-eta"></span>
+          </div>
         </div>
 
-        <div id="file-${file.id}-remove" class="col-auto text-end" title="Remove file" style="cursor: pointer; display: ${isMine ? 'block-inline' : 'none'}">
-          <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" fill="#dc3545" class="bi bi-x-circle" viewBox="0 0 16 16">
-            <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
-            <path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"/>
-          </svg>
-        </div>
-        <div id="file-${file.id}-abort" class="col-auto text-end" title="Stop file download" style="cursor: pointer; display: none">
-          <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" fill="#dc3545" class="bi bi-x-circle" viewBox="0 0 16 16">
-            <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
-            <path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"/>
-          </svg>
-        </div>
-        <div id="file-${file.id}-download" class="col-auto text-end" title="Download file" style="cursor: pointer; display: ${isMine ? 'none' : 'block-inline'}">
-          <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" fill="#0d6efd" class="bi bi-arrow-down-circle" viewBox="0 0 16 16">
-            <path fill-rule="evenodd" d="M1 8a7 7 0 1 0 14 0A7 7 0 0 0 1 8zm15 0A8 8 0 1 1 0 8a8 8 0 0 1 16 0zM8.5 4.5a.5.5 0 0 0-1 0v5.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V4.5z"/>
-          </svg>
-        </div>
+        <div id="file-${file.id}-error" class="file-error-banner" style="display:none"></div>
       </div>
     `
     dom.transfer_files_list.appendChild(li)

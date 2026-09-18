@@ -34,7 +34,7 @@ def load_secret() -> str:
 SECRET_KEY = load_secret()
 
 # Init FastAPI
-app = FastAPI(title='FileSync API', version='4.2.0', root_path="/api")
+app = FastAPI(title='AirRelay API', version='4.2.0', root_path="/api")
 
 # CORS is only needed when the frontend is served from a different origin than the API
 # (i.e. local development). In production everything is same-origin behind the reverse
@@ -52,12 +52,12 @@ if _cors_origins:
 # Add root route
 @app.get("/")
 async def root():
-    return {"message": "Welcome to FileSync API!", "version": app.version}
+    return {"message": "Welcome to AirRelay API!", "app": "AirRelay", "version": app.version}
 
 # Add health check route
 @app.get("/health")
 async def health_check():
-    return {"message": "FileSync API is running!"}
+    return {"status": "ok", "app": "AirRelay", "message": "AirRelay API is running!", "version": app.version}
 
 # Add uuid route
 @app.get("/uuid")

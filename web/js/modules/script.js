@@ -1,5 +1,5 @@
 import { dom, showToast } from './dom.js';
-import { User } from './webrtc/user.js';
+import { User, getOSIconSVG } from './webrtc/user.js';
 import { registerServiceWorker, installSinkBadge, sinkState, activeMode } from './sink.js';
 import { installIceModeBadge } from './webrtc/mode.js';
 
@@ -9,7 +9,7 @@ const room_id = window.location.pathname.substring(1)
 // Store current user
 var user;
 
-// QR Code
+// QR Code instance for hidden canvas
 var qr = new QRious({
   element: document.getElementById('transfer-qr-code'),
   background: 'transparent',
@@ -18,11 +18,34 @@ var qr = new QRious({
   level: 'H',
 })
 
+// QR Code instance for modal
+var modalQr = null;
+function getModalQr() {
+  if (!modalQr && dom.qr_modal_canvas) {
+    modalQr = new QRious({
+      element: dom.qr_modal_canvas,
+      background: '#ffffff',
+      size: 240,
+      foreground: '#080b11',
+      level: 'H',
+    });
+  }
+  return modalQr;
+}
+
+function updateQRCodes(url) {
+  qr.set({ value: url });
+  const mq = getModalQr();
+  if (mq) mq.set({ value: url });
+}
+
 // Get theme mode
 if (window.localStorage.getItem('mode') == 'light') {
   dom.theme_text.innerHTML = 'Light'
   dom.comic_img.src = "assets/comic.png"
   qr.set({foreground: '#212529'});
+  const mq = getModalQr();
+  if (mq) mq.set({foreground: '#0f172a'});
 }
 
 // Load app version from API. Cosmetic — never let it block or break app boot.
@@ -45,7 +68,7 @@ async function onLoad() {
   // Check WebRTC browser compatibility
   if (typeof RTCPeerConnection === 'undefined') {
     dom.error_div.style.display = 'block'
-    dom.error_message.innerHTML = 'Your browser does not support <a href="https://caniuse.com/?search=webrtc" target="_blank" style="color: inherit; text-decoration: underline;">WebRTC</a>.<br><span style="color: #6c757d; font-size: 14px; margin-top: 10px; display: inline-block;">Please use a modern browser such as Chrome or Firefox.</span>'
+    dom.error_message.innerHTML = 'Your browser does not support <a href="https://caniuse.com/?search=webrtc" target="_blank" style="color: inherit; text-decoration: underline;">WebRTC</a>.<br><span style="color: #6c757d; font-size: 14px; margin-top: 10px; display: inline-block;">Please use a modern browser such as Chrome, Firefox, or Safari.</span>'
     return
   }
 
@@ -75,39 +98,44 @@ async function onLoad() {
     dom.transfer_div.style.display = 'block'
     dom.transfer_url_value.textContent = `${window.location.origin}/${new_room_id}`
     dom.transfer_users_list_host_name.innerHTML = user.name + ' (You)'
+    if (dom.transfer_users_list_host_os) {
+      dom.transfer_users_list_host_os.innerHTML = getOSIconSVG(user.os, 16);
+    }
     dom.transfer_users_count.innerHTML = ' (1)'
     dom.transfer_add_password.style.display = 'block';
-    qr.set({value: dom.transfer_url_value.textContent});
+    updateQRCodes(dom.transfer_url_value.textContent);
 
     // Init peer connection. user.init throws on ICE-credential failure or any pre-
     // 'open' Peer error — surface that here so the host UI doesn't sit silently on
     // top of a half-initialized user._peer.
     try {
       await user.init(new_room_id)
+      checkSharedTargetFiles(user)
     } catch (err) {
       console.warn('Host init failed:', err);
       dom.transfer_div.style.display = 'none'
       dom.connect_div.style.display = 'none'
       dom.error_div.style.display = 'block'
-      dom.error_message.innerHTML = 'Could not start FileSync. Please check your connection and refresh the page.'
+      dom.error_message.innerHTML = 'Could not start AirRelay. Please check your connection and refresh the page.'
       return
     }
   }
   // Peer
   else {
-    // Init UI Componente
+    // Init UI Components
     dom.connect_div.style.display = 'block'
     dom.transfer_url_value.textContent = `${window.location.origin}/${room_id}`
-    qr.set({value: dom.transfer_url_value.textContent});
+    updateQRCodes(dom.transfer_url_value.textContent);
 
     // Init peer connection. See host-path comment above — same contract.
     try {
       await user.init()
+      checkSharedTargetFiles(user)
     } catch (err) {
       console.warn('Peer init failed:', err);
       dom.connect_div.style.display = 'none'
       dom.error_div.style.display = 'block'
-      dom.error_message.innerHTML = 'Could not start FileSync. Please check your connection and refresh the page.'
+      dom.error_message.innerHTML = 'Could not start AirRelay. Please check your connection and refresh the page.'
       return
     }
 
@@ -135,6 +163,8 @@ function themeClick() {
     window.localStorage.setItem('mode', 'light')
     dom.comic_img.src = "assets/comic.png"
     qr.set({foreground: '#212529'});
+    const mq = getModalQr();
+    if (mq) mq.set({foreground: '#0f172a'});
   }
   else if (dom.theme_text.innerHTML == 'Light') {
     dom.theme_text.innerHTML = 'Dark'
@@ -144,6 +174,8 @@ function themeClick() {
     window.localStorage.setItem('mode', 'dark')
     dom.comic_img.src = "assets/comic-dark.png"
     qr.set({foreground: '#adb5db'});
+    const mq = getModalQr();
+    if (mq) mq.set({foreground: '#080b11'});
   }
 }
 
@@ -253,6 +285,84 @@ function copyURL() {
   }, 1000)
 }
 
+// Share Room via Web Share API or fallback to copyURL
+async function shareRoom() {
+  const url = dom.transfer_url_value?.textContent;
+  if (!url) return;
+  if (navigator.share) {
+    try {
+      await navigator.share({
+        title: 'AirRelay | Fast P2P File Transfer',
+        text: 'Join my AirRelay room to transfer files directly and securely between our devices:',
+        url: url,
+      });
+      return;
+    } catch (err) {
+      if (err.name === 'AbortError') return;
+    }
+  }
+  copyURL();
+}
+
+// Open Quick QR Modal
+function openQRModal() {
+  const url = dom.transfer_url_value?.textContent || window.location.href;
+  updateQRCodes(url);
+  if (dom.qr_modal && typeof bootstrap !== 'undefined') {
+    const modal = new bootstrap.Modal(dom.qr_modal);
+    modal.show();
+  }
+}
+
+// Check and consume files shared via Web Share Target API
+async function checkSharedTargetFiles(userInstance) {
+  if (typeof indexedDB === 'undefined') return;
+  try {
+    const req = indexedDB.open('airrelay_pwa_db', 1);
+    req.onsuccess = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains('shared_target_files')) return;
+      const tx = db.transaction('shared_target_files', 'readwrite');
+      const store = tx.objectStore('shared_target_files');
+      const getAllReq = store.getAll();
+      getAllReq.onsuccess = () => {
+        const records = getAllReq.result || [];
+        if (records.length > 0) {
+          const files = records.map(r => r.file).filter(Boolean);
+          store.clear();
+          if (files.length > 0 && userInstance) {
+            userInstance.addFiles(files);
+            showToast(`${files.length} file${files.length > 1 ? 's' : ''} added from share target.`);
+          }
+        }
+      };
+    };
+  } catch (err) {
+    console.warn('Failed to check shared target files:', err);
+  }
+}
+
+// PWA Install Prompt
+let deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  const installBtn = document.getElementById('install-pwa-btn');
+  if (installBtn) {
+    installBtn.style.display = 'inline-flex';
+    installBtn.onclick = async () => {
+      if (deferredPrompt) {
+        deferredPrompt.prompt();
+        const choice = await deferredPrompt.userChoice;
+        if (choice.outcome === 'accepted') {
+          installBtn.style.display = 'none';
+        }
+        deferredPrompt = null;
+      }
+    };
+  }
+});
+
 // Send File
 function sendFiles(event) {
   user.addFiles(event.files)
@@ -282,7 +392,18 @@ function bindUI() {
   on('password-input-toggle', 'click', () => togglePasswordVisibility('password-input', 'password-show', 'password-hide'));
   on('password-submit', 'click', connectWithPassword);
   on('transfer-url-row', 'click', copyURL);
-  on('transfer-select-file', 'click', () => dom.transfer_select_file_input.click());
+  on('transfer-share-btn', 'click', shareRoom);
+  on('transfer-qr-btn', 'click', openQRModal);
+  on('transfer-qr-code', 'click', openQRModal);
+  on('transfer-select-file', 'click', (e) => {
+    e.stopPropagation();
+    dom.transfer_select_file_input?.click();
+  });
+  on('dropzone', 'click', (e) => {
+    if (e.target !== dom.transfer_select_file && !dom.transfer_select_file?.contains(e.target)) {
+      dom.transfer_select_file_input?.click();
+    }
+  });
   on('transfer-select-file-input', 'change', (e) => sendFiles(e.target));
   on('transfer-add-password-btn', 'click', addPassword);
   on('transfer-users-change-name', 'click', changeName);
@@ -295,48 +416,56 @@ function bindUI() {
   on('download-modal-cancel', 'click', cancelDownloadAll);
 }
 
-// Drag and Drop on transfer-div
+// Drag and Drop on dropzone and transfer-div
 function initDropZone() {
-  const transferDiv = document.getElementById('transfer-div')
-  if (!transferDiv) return
+  const transferDiv = document.getElementById('transfer-div');
+  const dropzoneEl = document.getElementById('dropzone');
+  const targets = [transferDiv, dropzoneEl].filter(Boolean);
+  if (targets.length === 0) return;
 
   // Prevent browser default drag behavior globally
-  window.addEventListener('dragover', (e) => e.preventDefault())
-  window.addEventListener('drop', (e) => e.preventDefault())
+  window.addEventListener('dragover', (e) => e.preventDefault());
+  window.addEventListener('drop', (e) => e.preventDefault());
 
-  let dragCounter = 0
+  let dragCounter = 0;
 
-  transferDiv.addEventListener('dragenter', (e) => {
-    e.preventDefault()
-    e.stopPropagation()
-    dragCounter++
-    transferDiv.classList.add('drag-over')
-  })
+  for (const target of targets) {
+    target.addEventListener('dragenter', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dragCounter++;
+      dropzoneEl?.classList.add('drag-over');
+      transferDiv?.classList.add('drag-over');
+    });
 
-  transferDiv.addEventListener('dragover', (e) => {
-    e.preventDefault()
-    e.stopPropagation()
-  })
+    target.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    });
 
-  transferDiv.addEventListener('dragleave', (e) => {
-    e.preventDefault()
-    e.stopPropagation()
-    dragCounter--
-    if (dragCounter === 0) {
-      transferDiv.classList.remove('drag-over')
-    }
-  })
+    target.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dragCounter--;
+      if (dragCounter <= 0) {
+        dragCounter = 0;
+        dropzoneEl?.classList.remove('drag-over');
+        transferDiv?.classList.remove('drag-over');
+      }
+    });
 
-  transferDiv.addEventListener('drop', (e) => {
-    e.preventDefault()
-    e.stopPropagation()
-    dragCounter = 0
-    transferDiv.classList.remove('drag-over')
-    const files = e.dataTransfer.files
-    if (files.length > 0) {
-      user.addFiles(files)
-    }
-  })
+    target.addEventListener('drop', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dragCounter = 0;
+      dropzoneEl?.classList.remove('drag-over');
+      transferDiv?.classList.remove('drag-over');
+      const files = e.dataTransfer?.files;
+      if (files && files.length > 0 && user) {
+        user.addFiles(files);
+      }
+    });
+  }
 }
 
 // Function to generate a random string in the format XXX-XXXX-XXX.
@@ -361,9 +490,8 @@ function maybeShowInsecureContextWarning() {
   const banner = document.createElement('div');
   banner.id = 'insecure-context-banner';
   banner.innerHTML = `
-    <strong>Heads-up:</strong> FileSync is running over plain HTTP, so large transfers may fail.
-    For files over 500&nbsp;MB, please deploy FileSync with HTTPS — see the
-    <a href="https://github.com/polius/filesync#option-b--https-public-domain-recommended" target="_blank" rel="noopener" style="color:inherit; text-decoration:underline;">HTTPS setup guide</a>.
+    <strong>Heads-up:</strong> AirRelay is running over plain HTTP, so large transfers may fail.
+    For files over 500&nbsp;MB, please deploy AirRelay with HTTPS.
     <span id="insecure-context-banner-close" style="margin-left:10px; cursor:pointer; font-weight:bold;">×</span>
   `;
   Object.assign(banner.style, {

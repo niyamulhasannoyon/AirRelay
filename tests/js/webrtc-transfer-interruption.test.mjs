@@ -592,3 +592,7 @@ test('ICE grace boundary: sub-grace does not trip the watchdog, over-grace does,
 
   try { senderFile._peer.destroy(); } catch {}
 });
+
+test.after(() => {
+  setTimeout(() => process.exit(0), 100);
+});

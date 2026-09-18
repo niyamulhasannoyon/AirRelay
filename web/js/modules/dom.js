@@ -39,11 +39,15 @@ export const dom = {
   transfer_select_file: document.getElementById('transfer-select-file'),
   transfer_select_file_input: document.getElementById('transfer-select-file-input'),
   transfer_add_password: document.getElementById('transfer-add-password'),
+  transfer_share_btn: document.getElementById('transfer-share-btn'),
+  transfer_qr_btn: document.getElementById('transfer-qr-btn'),
+  dropzone: document.getElementById('dropzone'),
 
   transfer_users_div: document.getElementById('transfer-users-div'),
   transfer_users_count: document.getElementById('transfer-users-count'),
   transfer_users_list: document.getElementById('transfer-users-list'),
   transfer_users_list_host: document.getElementById('transfer-users-list-host'),
+  transfer_users_list_host_os: document.getElementById('transfer-users-list-host-os'),
   transfer_users_list_host_name: document.getElementById('transfer-users-list-host-name'),
 
   transfer_files_div: document.getElementById('transfer-files-div'),
@@ -55,6 +59,10 @@ export const dom = {
   // PASSWORD MODAL
   password_modal: document.getElementById('password-modal'),
   password_modal_value: document.getElementById('password-modal-value'),
+
+  // QR MODAL
+  qr_modal: document.getElementById('qr-modal'),
+  qr_modal_canvas: document.getElementById('qr-modal-canvas'),
 
   // NAME MODAL
   name_modal: document.getElementById('name-modal'),

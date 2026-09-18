@@ -1,105 +1,115 @@
 <div align="center">
-<img src="web/assets/icon.png" alt="FileSync Logo" width="80">
-<h1 align="center">FileSync</h1>
+<img src="web/assets/icon.png" alt="AirRelay Logo" width="80">
+<h1 align="center">AirRelay</h1>
 
-**Send files from one device to many, in real time — private, peer-to-peer, with no size limit.**
+**Ultra-fast, zero-install peer-to-peer file sharing across any device — private, encrypted, and direct.**
 
 <p align="center">
-<a href="https://github.com/polius/filesync/actions/workflows/release.yml"><img src="https://github.com/polius/filesync/actions/workflows/release.yml/badge.svg"></a>&nbsp;<a href="https://github.com/polius/filesync/releases"><img alt="GitHub Release" src="https://img.shields.io/github/v/release/polius/filesync"></a>&nbsp;<a href="https://hub.docker.com/r/poliuscorp/filesync"><img alt="Docker Pulls" src="https://img.shields.io/docker/pulls/poliuscorp/filesync"></a>&nbsp;<a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-blue.svg"></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-blue.svg"></a>
+  <img alt="PWA Ready" src="https://img.shields.io/badge/PWA-Ready-10b981.svg">
+  <img alt="WebRTC DataChannels" src="https://img.shields.io/badge/WebRTC-Encrypted%20P2P-3b82f6.svg">
+  <img alt="Zero Install" src="https://img.shields.io/badge/Zero-Install-orange.svg">
 </p>
-
-<br>
-
-![FileSync](web/assets/filesync.png?v=4.2.0)
 
 </div>
 
-## Features
+---
 
-- **Private**: files go directly between browsers over encrypted WebRTC; the server never sees them.
-- **Any file size**: files stream to disk as they arrive, so memory use stays flat no matter the size.
-- **Automatic resume**: interrupted transfers reconnect and continue from where they stopped.
-- **One-to-many**: share a room link or QR code and send to many devices at once.
-- **Works across networks**: direct connection when possible, automatic relay when not.
-- **No installs or accounts**: recipients just open a link; rooms can be password-protected.
-- **Self-hosted**: a single Docker image you run yourself.
+## Overview
 
-## Self-hosting
+**AirRelay** is a modern, production-ready, peer-to-peer file-sharing web application built for seamless data distribution between Mac, Windows, Linux, iOS, and Android devices.
 
-### Prerequisites
+Featuring a Raycast and Linear-inspired glassmorphism interface, AirRelay streams files of any size directly through browser-to-browser WebRTC DataChannels with strict backpressure flow control, zero cloud storage, and end-to-end encryption.
 
-- [Docker](https://docs.docker.com/get-docker/)
-- [Docker Compose](https://docs.docker.com/compose/install/)
+---
 
-### Option A — HTTP (quick local test)
+## Key Features
 
-For quickly testing the app locally — not meant for production. Use [Option B](#option-b--https-own-domain-recommended) instead.
+- **Private & Direct**: Files transfer point-to-point via encrypted WebRTC DataChannels (DTLS). Data never touches intermediate servers or cloud storage.
+- **Strict Backpressure Control**: Capped at 64 KB high-water buffer threshold (`HIGH_WATER`) to eliminate socket queue bufferbloat, memory leaks, and tab crashes during high-speed transfers.
+- **Real-Time Speed & ETA**: Dynamic rolling-window throughput calculation displaying real-time transfer speeds (`KB/s`, `MB/s`, `GB/s`) and remaining estimated time.
+- **Zero-Install Cross-Device**: No native apps or accounts required. Works across desktop and mobile browsers.
+- **Device OS & File Categorization**: Automatic peer OS detection (macOS, iOS, Windows, Android, Linux) and visual file badges (`IMG`, `VID`, `AUD`, `PDF`, `CODE`, `DOC`, `ZIP`, `FILE`).
+- **Progressive Web App (PWA)**: Installable as a standalone app with offline shell caching and native **Web Share Target API** integration (`POST /share-target`) to receive shared files directly from mobile OS share sheets.
+- **Instant Pairing**: Share rooms instantly via native Web Share API or high-contrast QR code camera scanning.
+- **Memory-Safe Streaming**: Uses File System Access API and Service Worker pipelines to stream multi-gigabyte transfers directly to disk without browser memory bloat.
+- **Resumable Transfers**: Gracefully handles network interruptions and ICE renegotiations, allowing paused transfers to continue from the last durably written byte offset.
+- **Password Protection**: Optional room-level passwords for restricted access.
 
-1. Download [`deploy/docker-compose.yml`](deploy/docker-compose.yml).
-2. Start it:
+---
 
-```bash
-docker compose up -d
+## Architecture
+
+```
+                                    +--------------------------------+
+                                    |    AirRelay Signaling Server    |
+                                    |    (FastAPI / WebSockets /ws)  |
+                                    +--------------------------------+
+                                              ^            ^
+                             SDP & ICE Only   |            |   SDP & ICE Only
+                                              v            v
+           +--------------------+                                       +--------------------+
+           |    Sender Peer     | <======= Direct Encrypted WebRTC ===> |   Receiver Peer    |
+           |   (Mac/Win/Linux)  |          DataChannel (<64KB Queue)    |   (iOS/Android/PC) |
+           +--------------------+                                       +--------------------+
+                     |                                                             |
+            [Disk Slice Stream]                                           [Direct Disk Sink]
+                     v                                                             v
+             Local File Read                                                FileSystem API / SW
 ```
 
-Open `http://localhost` on the machine running Docker.
+1. **Signaling**: Initial SDP offers/answers and ICE candidate exchange are coordinated over lightweight WebSockets.
+2. **Transfer**: File chunks stream point-to-point across WebRTC DataChannels using 16 KB chunks with backpressure throttling at 64 KB.
+3. **Receiving**: Chunks are durably written using the File System Access API (Chromium) or Service Worker streaming responses.
 
-### Option B — HTTPS (own domain, recommended)
+---
 
-1. Download [`deploy/docker-compose-ssl.yml`](deploy/docker-compose-ssl.yml) and [`deploy/Caddyfile`](deploy/Caddyfile).
-2. Open `Caddyfile` and replace `yourdomain.com` (the first line) with your domain. Leave the rest of the file as it is.
-3. Start it:
+## Self-Hosting with Docker
+
+### Option A: Quick Local Test (HTTP)
 
 ```bash
-docker compose -f docker-compose-ssl.yml up -d
+docker compose -f deploy/docker-compose.yml up -d
 ```
+Open `http://localhost` in your browser.
 
-Open `https://yourdomain.com`.
+### Option B: Production Setup (HTTPS with Caddy & Coturn)
 
-## Required ports
+1. Open `deploy/Caddyfile` and replace `yourdomain.com` with your domain.
+2. Start the stack:
+```bash
+docker compose -f deploy/docker-compose-ssl.yml up -d
+```
+3. Open `https://yourdomain.com`.
 
-Open these on your server's firewall:
+### Firewall & Ports
 
 | Port | Protocol | Purpose |
 |---|---|---|
-| `80` (HTTP) / `443` (HTTPS) | TCP | Web interface |
-| `3478` | TCP + UDP | STUN/TURN, peer-to-peer connection setup |
-| `50000–50100` | UDP | TURN relay range, used when a direct connection isn't possible |
+| `80` (HTTP) / `443` (HTTPS) | TCP | Web Interface & Caddy ACME SSL |
+| `3478` | TCP + UDP | Coturn STUN/TURN Signaling |
+| `50000–50100` | UDP | Coturn TURN Media Relay (NAT Traversal) |
 
-The 50000–50100 UDP range carries relayed traffic for the minority of connections that can't go direct, typically a peer behind symmetric NAT or a firewall that blocks UDP.
+---
 
-## Customizing ports (optional)
+## Development & Testing
 
-**HTTP port.** In `docker-compose.yml`, change the **first** number of the `filesync` port mapping. The second is the container's internal port; leave it as `80`:
+### Running Tests
 
-```yaml
-ports:
-  - "8080:80"   # serve on http://localhost:8080
+Automated regression and protocol tests run with Node.js built-in test runner:
+
+```bash
+npm test
 ```
 
-**HTTPS port.** Keep Caddy on `443`. For a non-standard external port, put your own reverse proxy in front, terminate TLS there, and forward to FileSync's internal HTTP port.
+### Linting
 
-## How it works
+```bash
+npm run lint
+```
 
-FileSync uses native [WebRTC](https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API) to transfer files directly between browsers, with no intermediate server in the data path. A WebSocket signaling server (served at `/ws` by the FileSync app itself) assists with connection setup only — relaying SDP offers/answers and ICE candidates between peers; once the peer-to-peer connection is established, file bytes flow directly between browsers and the server is no longer involved.
-
-On the receiving side, the first save method the browser supports is used, in this order:
-
-1. **File System Access API** — streams to a file you pick. Desktop Chromium browsers (Chrome, Edge, Brave, Opera) over HTTPS.
-2. **Service Worker** — streams into a normal browser download. All modern browsers over HTTPS.
-3. **Blob** — buffers the entire file in memory before saving. Last resort; the only option over plain HTTP.
-
-The first two require a secure context (HTTPS or localhost), so serving FileSync over HTTPS is recommended: it enables memory-safe transfers of any size.
-
-![File Transfer - https://xkcd.com/949](web/assets/comic.png)
-
-*Comic: [xkcd #949 — "File Transfer"](https://xkcd.com/949) by [Randall Munroe](https://xkcd.com), licensed under [CC BY-NC 2.5](https://creativecommons.org/licenses/by-nc/2.5/).*
-
-## Related projects
-
-If you prefer the terminal, check out [fsend](https://github.com/polius/fsend) — fast, private file sharing from your command line.
+---
 
 ## License
 
 Released under the [MIT License](LICENSE).
-# AirRelay
