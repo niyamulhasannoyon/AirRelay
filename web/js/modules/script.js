@@ -236,15 +236,21 @@ function themeClick() {
 
 // About
 function aboutClick() {
-  if (dom.about_text.innerHTML == 'About') {
-    dom.transfer_div.style.display = 'none'
-    dom.about_div.style.display = 'block'
-    dom.about_text.innerHTML = 'Go back'
+  const isAboutShown = dom.about_div && dom.about_div.style.display === 'block';
+  if (!isAboutShown) {
+    if (dom.transfer_div) dom.transfer_div.style.display = 'none';
+    if (dom.join_view) dom.join_view.style.display = 'none';
+    if (dom.about_div) dom.about_div.style.display = 'block';
+    if (dom.about_text) dom.about_text.innerHTML = 'Back to App';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  } else {
+    if (dom.about_div) dom.about_div.style.display = 'none';
+    if (dom.about_text) dom.about_text.innerHTML = 'About AirRelay';
+    if (dom.transfer_div) dom.transfer_div.style.display = 'block';
   }
-  else {
-    dom.about_div.style.display = 'none'
-    dom.about_text.innerHTML = 'About'
-    dom.transfer_div.style.display = 'block'
+  if (dom.settings_menu) {
+    dom.settings_menu.style.display = 'none';
+    dom.settings_menu_btn?.setAttribute('aria-expanded', 'false');
   }
 }
 
@@ -517,6 +523,7 @@ function initSettingsMenu() {
   if (!dom.settings_menu_btn || !dom.settings_menu) return;
 
   const toggleMenu = (e) => {
+    e?.preventDefault();
     e?.stopPropagation();
     const isHidden = dom.settings_menu.style.display === 'none' || !dom.settings_menu.style.display;
     dom.settings_menu.style.display = isHidden ? 'block' : 'none';
@@ -531,10 +538,18 @@ function initSettingsMenu() {
   dom.settings_menu_btn.addEventListener('click', toggleMenu);
 
   document.addEventListener('click', (e) => {
-    if (!dom.settings_menu.contains(e.target) && e.target !== dom.settings_menu_btn && !dom.settings_menu_btn.contains(e.target)) {
+    if (dom.settings_menu.style.display === 'block' &&
+        !dom.settings_menu.contains(e.target) &&
+        e.target !== dom.settings_menu_btn &&
+        !dom.settings_menu_btn.contains(e.target)) {
       closeMenu();
     }
   });
+
+  // Auto-close menu when navigating to other modals / panels
+  document.getElementById('shortcuts-btn')?.addEventListener('click', closeMenu);
+  document.getElementById('about-btn')?.addEventListener('click', closeMenu);
+  document.getElementById('install-pwa-btn')?.addEventListener('click', closeMenu);
 
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && dom.settings_menu.style.display === 'block') {

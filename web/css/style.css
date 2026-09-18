@@ -1845,16 +1845,30 @@ kbd {
   position: absolute;
   right: 0;
   top: calc(100% + 8px);
-  min-width: 220px;
-  background: var(--glass-card-bg);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  border: 1px solid var(--glass-border);
+  min-width: 230px;
+  background-color: #0f1422 !important;
+  background: #0f1422;
+  border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: var(--radius-lg);
-  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.35);
-  padding: 6px;
-  z-index: 1050;
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.75), 0 4px 16px rgba(0, 0, 0, 0.5);
+  padding: 8px 6px;
+  z-index: 9999;
   animation: dropdownFade 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+:root.light .settings-dropdown-panel {
+  background-color: #ffffff !important;
+  background: #ffffff;
+  border-color: rgba(0, 0, 0, 0.12);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.18), 0 4px 16px rgba(0, 0, 0, 0.08);
+}
+
+@media (max-width: 576px) {
+  .settings-dropdown-panel {
+    right: -4px;
+    min-width: 220px;
+    max-width: calc(100vw - 24px);
+  }
 }
 
 @keyframes dropdownFade {
@@ -1869,48 +1883,65 @@ kbd {
 }
 
 .settings-menu-header {
-  padding: 6px 10px 4px;
-  font-size: 0.7rem;
+  padding: 6px 12px 4px;
+  font-size: 0.72rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--text-muted);
+  color: #94a3b8;
   user-select: none;
+}
+
+:root.light .settings-menu-header {
+  color: #64748b;
 }
 
 .settings-menu-item {
   display: flex;
   align-items: center;
   width: 100%;
-  padding: 8px 10px;
+  padding: 9px 12px;
   border: none;
   background: transparent;
   border-radius: var(--radius-md);
-  color: var(--text-primary);
-  font-size: 0.86rem;
+  color: #f8fafc;
+  font-size: 0.88rem;
+  font-weight: 500;
   text-decoration: none;
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition: all 0.15s ease;
 }
 
-.settings-menu-item:hover {
-  background: var(--glass-bg-hover);
-  color: var(--accent-primary);
+:root.light .settings-menu-item {
+  color: #0f172a;
 }
 
+.settings-menu-item:hover,
 .settings-menu-item:focus-visible {
-  outline: 2px solid var(--accent-primary);
-  outline-offset: -1px;
+  background: rgba(59, 130, 246, 0.14);
+  color: var(--accent-primary);
+  outline: none;
+}
+
+:root.light .settings-menu-item:hover,
+:root.light .settings-menu-item:focus-visible {
+  background: rgba(37, 99, 235, 0.08);
+  color: var(--accent-primary);
 }
 
 .menu-item-icon {
   width: 22px;
+  height: 22px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-secondary);
+  color: #94a3b8;
   flex-shrink: 0;
   transition: color 0.15s ease;
+}
+
+:root.light .menu-item-icon {
+  color: #64748b;
 }
 
 .settings-menu-item:hover .menu-item-icon {
@@ -1920,35 +1951,97 @@ kbd {
 .menu-item-label {
   flex: 1;
   text-align: left;
-  margin-left: 8px;
+  margin-left: 10px;
+  font-size: 0.88rem;
   font-weight: 500;
+  white-space: nowrap;
 }
 
 .menu-item-badge {
   font-size: 0.72rem;
-  padding: 2px 7px;
-  border-radius: var(--radius-full);
-  background: var(--glass-bg-subtle);
-  border: 1px solid var(--glass-border);
-  color: var(--text-muted);
   font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #cbd5e1;
+}
+
+:root.light .menu-item-badge {
+  background: rgba(0, 0, 0, 0.05);
+  border-color: rgba(0, 0, 0, 0.1);
+  color: #475569;
 }
 
 .menu-item-kbd {
   font-family: var(--font-mono);
   font-size: 0.72rem;
-  padding: 1px 6px;
-  border-radius: 4px;
-  background: var(--glass-bg-subtle);
-  border: 1px solid var(--glass-border);
-  color: var(--text-muted);
   font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #cbd5e1;
+}
+
+:root.light .menu-item-kbd {
+  background: rgba(0, 0, 0, 0.05);
+  border-color: rgba(0, 0, 0, 0.1);
+  color: #475569;
 }
 
 .settings-menu-divider {
   height: 1px;
-  background: var(--glass-border);
-  margin: 5px 6px;
+  background: rgba(255, 255, 255, 0.1);
+  margin: 6px 4px;
+}
+
+:root.light .settings-menu-divider {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+/* --- Circular Close Buttons (Modal & Join Panel) --- */
+.btn-close-circle,
+.btn-icon-ghost {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg-subtle);
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  flex-shrink: 0;
+}
+
+.btn-close-circle:hover,
+.btn-icon-ghost:hover {
+  background: var(--glass-bg-hover);
+  color: var(--text-primary);
+  border-color: var(--glass-border-hover);
+  transform: scale(1.08);
+}
+
+.btn-close-circle:active,
+.btn-icon-ghost:active {
+  transform: scale(0.92);
+}
+
+:root.light .btn-close-circle,
+:root.light .btn-icon-ghost {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.1);
+  color: #64748b;
+}
+
+:root.light .btn-close-circle:hover,
+:root.light .btn-icon-ghost:hover {
+  background: rgba(0, 0, 0, 0.08);
+  color: #0f172a;
 }
 
 /* --- Hero Section & Action Mode Switcher --- */
