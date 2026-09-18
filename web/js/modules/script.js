@@ -141,8 +141,9 @@ async function onLoad() {
       const res = await fetch(`/api/rooms/resolve/${encodeURIComponent(room_id)}`);
       if (res.ok) {
         const data = await res.json();
-        if (data && data.peer_id) {
-          targetPeerId = data.peer_id;
+        const resolvedId = data?.peer_id || data?.host_id || data?.room_id;
+        if (data && resolvedId) {
+          targetPeerId = resolvedId;
           if (data.code) {
             const formattedCode = `${data.code.slice(0, 3)} ${data.code.slice(3, 6)}`;
             if (dom.room_code_val) dom.room_code_val.textContent = formattedCode;
@@ -356,10 +357,11 @@ async function checkAndDisplayNearbyRooms() {
     const res = await fetch('/api/rooms/nearby');
     if (!res.ok) return;
     const rooms = await res.json();
-    if (!Array.isArray(rooms) || rooms.length === 0) return;
+    const roomsList = Array.isArray(rooms) ? rooms : (rooms?.nearby_rooms || []);
+    if (roomsList.length === 0) return;
 
     // Filter out our own room
-    const availableRooms = rooms.filter(r => r.peer_id !== user?.id && r.code !== user?.code);
+    const availableRooms = roomsList.filter(r => (r.peer_id || r.host_id) !== user?.id && r.code !== user?.code);
     if (availableRooms.length === 0) return;
 
     if (dom.join_nearby_badge) {
@@ -378,8 +380,9 @@ async function checkAndDisplayNearbyRooms() {
       }
       if (dom.nearby_banner_join) {
         dom.nearby_banner_join.onclick = () => {
-          if (availableRooms.length === 1) {
-            window.location.href = `/${first.peer_id}`;
+          const targetId = first.peer_id || first.host_id || first.room_id;
+          if (availableRooms.length === 1 && targetId) {
+            window.location.href = `/${targetId}`;
           } else {
             openJoinModal('nearby');
           }
@@ -448,10 +451,9 @@ async function renderNearbyList() {
   try {
     const res = await fetch('/api/rooms/nearby');
     if (!res.ok) throw new Error('API error');
-    const rooms = await res.json();
-    const available = Array.isArray(rooms)
-      ? rooms.filter(r => r.peer_id !== user?.id && r.code !== user?.code)
-      : [];
+    const raw = await res.json();
+    const roomsList = Array.isArray(raw) ? raw : (raw?.nearby_rooms || []);
+    const available = roomsList.filter(r => (r.peer_id || r.host_id) !== user?.id && r.code !== user?.code);
 
     if (dom.join_nearby_badge) {
       dom.join_nearby_badge.textContent = available.length;
@@ -469,7 +471,9 @@ async function renderNearbyList() {
       return;
     }
 
-    dom.join_nearby_list.innerHTML = available.map(r => `
+    dom.join_nearby_list.innerHTML = available.map(r => {
+      const targetId = r.peer_id || r.host_id || r.room_id;
+      return `
       <div class="nearby-device-card">
         <div class="nearby-device-info">
           <div class="nearby-device-avatar">
@@ -480,11 +484,12 @@ async function renderNearbyList() {
             <span class="nearby-device-meta">Code: ${escapeHTML(r.formatted_code)}</span>
           </div>
         </div>
-        <button class="btn-primary-pill btn-sm nearby-connect-btn" data-peer="${escapeHTML(r.peer_id)}" type="button">
+        <button class="btn-primary-pill btn-sm nearby-connect-btn" data-peer="${escapeHTML(targetId)}" type="button">
           <span>Connect ⚡</span>
         </button>
       </div>
-    `).join('');
+    `;
+    }).join('');
 
     dom.join_nearby_list.querySelectorAll('.nearby-connect-btn').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -516,12 +521,17 @@ async function submitJoinCode(query) {
     const res = await fetch(`/api/rooms/resolve/${encodeURIComponent(clean)}`);
     if (!res.ok) throw new Error('Not found');
     const data = await res.json();
-    if (data && data.peer_id) {
+    if (!data || data.found === false) {
+      throw new Error('Room not found');
+    }
+    const targetPeer = data.peer_id || data.host_id || data.room_id;
+    if (targetPeer) {
       const modal = bootstrap.Modal.getInstance(dom.join_modal);
       modal?.hide?.();
-      window.location.href = `/${data.peer_id}`;
+      window.location.href = `/${targetPeer}`;
       return;
     }
+    throw new Error('No target peer');
   } catch {
     if (dom.join_loading) dom.join_loading.style.display = 'none';
     if (dom.join_error_msg) {

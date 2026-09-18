@@ -317,7 +317,31 @@ class _PeerRegistry:
                     self.add_event("disconnect", f"Peer {peer_id[:8]} disconnected: {reason}", peer_id=peer_id, room_id=session.room_id, severity="warning" if close_code and close_code >= 4400 else "info")
 
     def lookup(self, peer_id: str) -> Optional[WebSocket]:
-        return self._peers.get(peer_id)
+        ws = self._peers.get(peer_id)
+        if ws is not None:
+            return ws
+        # Try resolving by 6-digit code
+        digits = "".join(filter(str.isdigit, peer_id))
+        if len(digits) == 6 and digits in self._code_to_peer:
+            actual_pid = self._code_to_peer[digits]
+            return self._peers.get(actual_pid)
+        # Try resolving by room_id slug where peer is host
+        for pid, sess in self._sessions.items():
+            if sess.role == "host" and (sess.room_id == peer_id or pid == peer_id):
+                return self._peers.get(pid)
+        return None
+
+    def resolve_target_id(self, target_id: str) -> str:
+        """Resolve an alias (6-digit code or room slug) to actual target peer ID."""
+        if target_id in self._peers:
+            return target_id
+        digits = "".join(filter(str.isdigit, target_id))
+        if len(digits) == 6 and digits in self._code_to_peer:
+            return self._code_to_peer[digits]
+        for pid, sess in self._sessions.items():
+            if sess.role == "host" and (sess.room_id == target_id or pid == target_id):
+                return pid
+        return target_id
 
     def get_session(self, peer_id: str) -> Optional[PeerSession]:
         return self._sessions.get(peer_id)
@@ -414,6 +438,7 @@ class _PeerRegistry:
             "found": True,
             "room_id": effective_room,
             "host_id": target_peer_id,
+            "peer_id": target_peer_id,
             "code": host_sess.code,
             "formatted_code": f"{host_sess.code[:3]}-{host_sess.code[3:]}" if len(host_sess.code) == 6 else host_sess.code,
             "host_name": host_sess.name or f"Peer {target_peer_id[:6]}",
@@ -465,6 +490,7 @@ class _PeerRegistry:
                 nearby.append({
                     "room_id": effective_room,
                     "host_id": pid,
+                    "peer_id": pid,
                     "code": sess.code,
                     "formatted_code": f"{sess.code[:3]}-{sess.code[3:]}" if len(sess.code) == 6 else sess.code,
                     "host_name": sess.name or f"Peer {pid[:6]}",
@@ -1023,8 +1049,9 @@ async def signaling(websocket: WebSocket):
                     await _send_json_safe(websocket, {"type": "error", "code": "invalid-message", "message": "'to' must be a valid peer id."})
                     continue
 
+                actual_target_id = _REGISTRY.resolve_target_id(target_id)
                 pair_window_start = now - _PAIR_WINDOW_SECONDS
-                pair_recent = pair_timestamps.setdefault(target_id, [])
+                pair_recent = pair_timestamps.setdefault(actual_target_id, [])
                 pair_recent[:] = [t for t in pair_recent if t >= pair_window_start]
                 if len(pair_recent) >= _PAIR_MAX_PER_WINDOW:
                     await _send_json_safe(websocket, {"type": "error", "code": "rate-limited", "message": f"Too many signals to peer {target_id!r}."})
@@ -1033,13 +1060,13 @@ async def signaling(websocket: WebSocket):
                 if len(pair_timestamps) > 256:
                     pair_timestamps = {k: v for k, v in pair_timestamps.items() if v}
 
-                target_ws = _REGISTRY.lookup(target_id)
+                target_ws = _REGISTRY.lookup(actual_target_id)
                 if target_ws is None:
                     await _send_json_safe(websocket, {"type": "peer-unavailable", "id": target_id})
                     continue
 
                 # Record traffic telemetry
-                _REGISTRY.record_signal_traffic(peer_id, target_id, len(raw))
+                _REGISTRY.record_signal_traffic(peer_id, actual_target_id, len(raw))
 
                 outbound_payload = _maybe_rewrite_signal_payload(payload, target_ws)
                 await _send_json_safe(target_ws, {"type": "signal", "from": peer_id, "payload": outbound_payload})
