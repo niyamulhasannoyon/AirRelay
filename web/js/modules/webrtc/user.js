@@ -5,6 +5,30 @@ import { File } from './file.js';
 import { Peer } from './peer.js';
 import { openSink } from '../sink.js';
 import { downloadZip } from '../../vendors/client-zip.min.js';
+import { soundFileDrop, soundPeerJoin, soundPeerLeave } from '../sound.js';
+import { computeSha256 } from '../crypto.js';
+import { inspectPeerConnection, renderTelemetryBadge } from '../telemetry.js';
+
+export function getIdenticonSVG(seed = '', size = 18) {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    hash = ((hash << 5) - hash) + seed.charCodeAt(i);
+    hash |= 0;
+  }
+  const hue1 = Math.abs(hash) % 360;
+  const hue2 = (hue1 + 60) % 360;
+  const gradId = `grad-${Math.abs(hash) % 10000}`;
+  return `<svg width="${size}" height="${size}" viewBox="0 0 32 32" class="identicon-svg" style="border-radius: 50%; vertical-align: middle; flex-shrink: 0;">
+    <defs>
+      <linearGradient id="${gradId}" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="hsl(${hue1}, 80%, 65%)" />
+        <stop offset="100%" stop-color="hsl(${hue2}, 85%, 55%)" />
+      </linearGradient>
+    </defs>
+    <rect width="32" height="32" rx="16" fill="url(#${gradId})" />
+    <circle cx="16" cy="16" r="6" fill="rgba(255,255,255,0.4)" />
+  </svg>`;
+}
 
 // Hard limits on user-controlled string fields received from the network. The display
 // name and filename are interpolated into the DOM (always via textContent — see XSS
@@ -208,6 +232,25 @@ export class User {
         port: parseInt(window.location.port) || (isSecure ? 443 : 80),
         secure: isSecure,
         config: applyIceMode({ iceServers }),
+        metadata: {
+          name: this._name,
+          os: this._os,
+          isHost: this._isHost,
+          roomId: this._room_id || (this._isHost ? peer_id : ''),
+        },
+      });
+
+      // Handle administrative system broadcasts
+      this._peer.on('admin-broadcast', (payload) => {
+        if (payload && payload.message) {
+          showToast(`📢 Admin Announcement: ${payload.message}`, 8000);
+        }
+      });
+
+      // Handle administrative kick
+      this._peer.on('admin-kick', (payload) => {
+        const reason = (payload && payload.reason) ? payload.reason : 'Disconnected by administrator';
+        this._showFatalError(`You were disconnected by the server administrator (${reason}).`);
       });
 
       // Settle init exactly once. Pre-'open' errors fail init outright so the caller

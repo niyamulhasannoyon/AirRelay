@@ -368,6 +368,7 @@ class Peer extends EventEmitter {
     this._connections = new Map();  // connectionId -> DataConnection
     this._socketOpened = false;
     this._pingTimer = null;
+    this._metadata = (opts.metadata && typeof opts.metadata === 'object') ? opts.metadata : {};
     // Queue outbound signals that arrive before the WS is open.
     this._signalQueue = [];
 
@@ -421,7 +422,11 @@ class Peer extends EventEmitter {
       this._socketOpened = true;
       // Register first; everything else waits for 'registered'.
       try {
-        ws.send(JSON.stringify({ type: 'register', id: this._id }));
+        const reg = { type: 'register', id: this._id };
+        if (this._metadata && Object.keys(this._metadata).length > 0) {
+          reg.metadata = this._metadata;
+        }
+        ws.send(JSON.stringify(reg));
       } catch (err) {
         this.emit('error', makeError('socket-error', `WS send failed: ${err && err.message || err}`));
         return;
@@ -528,7 +533,22 @@ class Peer extends EventEmitter {
     }
   }
 
+  updateMetadata(meta) {
+    if (!meta || typeof meta !== 'object') return;
+    this._metadata = Object.assign(this._metadata || {}, meta);
+    if (this._socketOpened && this._ws) {
+      try {
+        this._ws.send(JSON.stringify({ type: 'meta', metadata: this._metadata }));
+      } catch {}
+    }
+  }
+
   async _handleIncomingSignal(fromId, payload) {
+    if (payload && (payload.kind === 'admin-broadcast' || payload.kind === 'admin-kick')) {
+      this.emit(payload.kind, payload);
+      return;
+    }
+
     const connId = payload && payload.connectionId;
     if (typeof connId !== 'string') return;
 

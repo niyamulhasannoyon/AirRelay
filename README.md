@@ -35,6 +35,7 @@ Featuring a Raycast and Linear-inspired glassmorphism interface, AirRelay stream
 - **Memory-Safe Streaming**: Uses File System Access API and Service Worker pipelines to stream multi-gigabyte transfers directly to disk without browser memory bloat.
 - **Resumable Transfers**: Gracefully handles network interruptions and ICE renegotiations, allowing paused transfers to continue from the last durably written byte offset.
 - **Password Protection**: Optional room-level passwords for restricted access.
+- **Professional Admin Console**: Real-time glassmorphic dashboard (`/admin`) providing live connection metrics, client IP & network classification, OS/browser diagnostics, active rooms, peer kicking, broadcast alerts, and CSV/JSON export.
 
 ---
 
@@ -110,6 +111,36 @@ npm run lint
 
 ---
 
+## Environment Variables & Configuration
+
+AirRelay can be customized using environment variables or a `.env` file (see `.env.example`):
+
+| Variable | Default | Description |
+|---|---|---|
+| `ADMIN_USERNAME` | `airrelay_admin` | Username for accessing the `/admin` telemetry console. |
+| `ADMIN_PASSWORD` | `AirRelay@Admin#2026!Secure` | Strong master password for the admin panel. |
+| `ADMIN_JWT_SECRET` | *(falls back to `SECRET_KEY`)* | Secret key for signing admin session tokens (HS256). |
+| `SECRET_KEY` | *(auto-generated 64-char hex)* | Cryptographic HMAC key for WebRTC TURN credentials (`/ice-servers`). |
+| `SECRET_FILE` | `/keys/secret` | Path to shared secret key file for Coturn / Docker volumes. |
+| `PORT` | `8080` | Local port for FastAPI & WebSockets signaling server. |
+| `FILESYNC_MAX_WS` | `10000` | Maximum concurrent WebSocket connections before load-shedding (HTTP 503 / WS 1013). |
+| `CORS_ORIGINS` | `""` *(same-origin)* | Comma-separated list of allowed origins for cross-origin development. |
+
+---
+
+## Admin Panel
+
+AirRelay includes a dedicated glassmorphism administrator portal at:
+```
+http://localhost:8080/admin
+```
+- **Default Username**: `airrelay_admin`
+- **Default Password**: `AirRelay@Admin#2026!Secure`
+- Provides real-time metrics, active peer telemetry, IP/network classification, room management, system broadcast alerts, and CSV/JSON log exports.
+
+---
+
 ## License
 
 Released under the [MIT License](LICENSE).
+

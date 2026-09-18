@@ -12,3 +12,11 @@ services:
         value: 10000
       - key: SECRET_KEY
         generateValue: true
+      - key: ADMIN_USERNAME
+        value: relay_root_dMG8zTIoMm6rvcdO
+      - key: ADMIN_PASSWORD
+        value: 2f$SNWxKI!ZVG)nJ7v)%p@2cA=ByM79bM4nf
+      - key: ADMIN_JWT_SECRET
+        generateValue: true
+      - key: FILESYNC_MAX_WS
+        value: 10000

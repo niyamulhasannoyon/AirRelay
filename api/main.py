@@ -10,6 +10,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.signaling import router as signaling_router
+from api.admin import router as admin_router
 
 # SECRET_KEY signs both the TURN HMAC credentials and the JWT. The env var wins
 # (docker run, CI, dev); the compose files instead set SECRET_FILE, pointing at the
@@ -90,3 +91,6 @@ def generate_turn_credentials(ttl):
 
 # Mount WebRTC signaling routes (/ws). Implementation lives in api/signaling.py.
 app.include_router(signaling_router)
+
+# Mount Admin routes (/admin). Implementation lives in api/admin.py.
+app.include_router(admin_router, prefix="/admin", tags=["admin"])

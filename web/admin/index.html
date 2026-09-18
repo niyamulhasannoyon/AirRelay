@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AirRelay | Admin Console</title>
+  <link rel="icon" type="image/png" href="../assets/icon.png">
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="css/admin.css">
+</head>
+<body>
+
+  <!-- HEADER -->
+  <header class="admin-header">
+    <div class="brand-section">
+      <div class="brand-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16">
+          <path d="M15.384 6.115a.485.485 0 0 0-.047-.736A12.444 12.444 0 0 0 8 3C5.259 3 2.723 3.882.663 5.379a.485.485 0 0 0-.048.736.518.518 0 0 0 .668.05A11.448 11.448 0 0 1 8 4c2.507 0 4.827.802 6.716 2.164.205.148.49.13.668-.049z"/>
+          <path d="M13.229 8.271a.482.482 0 0 0-.063-.745A9.455 9.455 0 0 0 8 6c-1.905 0-3.68.56-5.166 1.526a.48.48 0 0 0-.063.745.525.525 0 0 0 .652.065A8.46 8.46 0 0 1 8 7a8.46 8.46 0 0 1 4.576 1.336c.206.132.48.108.653-.065zm-2.183 2.183c.226-.226.185-.605-.1-.75A6.473 6.473 0 0 0 8 9c-1.06 0-2.062.254-2.946.704-.285.145-.326.524-.1.75l.015.015c.16.16.407.19.611.09A5.478 5.478 0 0 1 8 10c.868 0 1.69.201 2.42.56.203.1.45.07.61-.091l.016-.015zM9.06 12.44c.196-.196.198-.52-.04-.66A1.99 1.99 0 0 0 8 11.5a1.99 1.99 0 0 0-1.02.28c-.238.14-.236.464-.04.66l.706.706a.5.5 0 0 0 .707 0l.707-.707z"/>
+        </svg>
+      </div>
+      <div class="brand-text">
+        <h1>AirRelay <span class="admin-badge">Admin Console</span></h1>
+        <p>Live WebSockets & WebRTC Telemetry</p>
+      </div>
+    </div>
+
+    <div class="header-status-pill">
+      <span class="pulse-dot" id="pulse-status"></span>
+      <span id="pulse-text">LIVE</span>
+      <span style="opacity: 0.4;">|</span>
+      <span id="header-active-count" style="color: var(--admin-text-primary); font-weight: 600;">0 Active</span>
+    </div>
+
+    <div class="header-actions">
+      <!-- Auto-refresh interval -->
+      <select class="admin-select" id="refresh-interval-select" title="Auto-refresh interval">
+        <option value="2000">Live (2s)</option>
+        <option value="3000" selected>Auto (3s)</option>
+        <option value="5000">Normal (5s)</option>
+        <option value="10000">Slow (10s)</option>
+        <option value="0">Paused</option>
+      </select>
+
+      <button class="admin-btn admin-btn-icon" id="manual-refresh-btn" title="Refresh Now">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor">
+          <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2z"/>
+          <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/>
+        </svg>
+      </button>
+
+      <button class="admin-btn admin-btn-primary" id="broadcast-open-btn">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M13 2.5a1.5 1.5 0 0 1 3 0v11a1.5 1.5 0 0 1-3 0v-.214c-2.162-1.241-4.49-1.843-6.912-2.083l.405 2.712A1 1 0 0 1 5.51 15.1h-.548a1 1 0 0 1-.916-.599l-1.85-3.49a68.14 68.14 0 0 0-.202-.003A2.014 2.014 0 0 1 0 9V7a2.02 2.02 0 0 1 1.992-2.013 74.663 74.663 0 0 0 2.483-.075c3.043-.154 6.148-.849 8.525-2.199V2.5zm1 0v11a.5.5 0 0 0 1 0v-11a.5.5 0 0 0-1 0zm-1 1.35c-2.344 1.205-5.209 1.843-8 2.008v4.284l.8.003c2.946.012 6.014.61 8.2 1.83V3.85z"/>
+        </svg>
+        <span>Broadcast</span>
+      </button>
+
+      <button class="admin-btn" id="export-btn" title="Export Telemetry Data">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
+          <path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/>
+        </svg>
+        <span>Export</span>
+      </button>
+
+      <button class="admin-btn" id="theme-toggle-btn" title="Toggle Theme">
+        <span id="theme-text">Dark</span>
+      </button>
+
+      <button class="admin-btn" id="logout-btn" title="Logout">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+          <path fill-rule="evenodd" d="M10 12.5a.5.5 0 0 1-.5.5h-8a.5.5 0 0 1-.5-.5v-9a.5.5 0 0 1 .5-.5h8a.5.5 0 0 1 .5.5v2a.5.5 0 0 0 1 0v-2A1.5 1.5 0 0 0 9.5 2h-8A1.5 1.5 0 0 0 0 3.5v9A1.5 1.5 0 0 0 1.5 14h8a1.5 1.5 0 0 0 1.5-1.5v-2a.5.5 0 0 0-1 0v2z"/>
+          <path fill-rule="evenodd" d="M15.854 8.354a.5.5 0 0 0 0-.708l-3-3a.5.5 0 0 0-.708.708L14.293 7.5H5.5a.5.5 0 0 0 0 1h8.793l-2.147 2.146a.5.5 0 0 0 .708.708l3-3z"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- MAIN CONTAINER -->
+  <main class="admin-container">
+
+    <!-- ADVISORY BANNER -->
+    <div class="advisory-banner" id="advisory-banner" style="display: none;">
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <span>⚠️</span>
+        <span><strong>Security Notice:</strong> The console is using default credentials (<code>airrelay_admin</code>). In production, configure <code>ADMIN_USERNAME</code> and <code>ADMIN_PASSWORD</code> environment variables.</span>
+      </div>
+    </div>
+
+    <!-- KPI SUMMARY CARDS -->
+    <section class="kpi-grid">
+      <div class="admin-glass kpi-card">
+        <div class="kpi-header">
+          <span class="kpi-title">Active Connections</span>
+          <div class="kpi-icon-wrap">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M7 14s-1 0-1-1 1-4 5-4 5 3 5 4-1 1-1 1H7zm4-6a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm-5.784 6A2.238 2.238 0 0 1 5 13c0-1.355.68-2.75 1.936-3.72A6.325 6.325 0 0 0 5 9c-4 0-5 3-5 4s1 1 1 1h4.216zM4.5 8a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z"/></svg>
+          </div>
+        </div>
+        <div class="kpi-value" id="kpi-active-peers">0</div>
+        <div class="kpi-subtext" id="kpi-active-sub">Peak: 0 concurrent</div>
+      </div>
+
+      <div class="admin-glass kpi-card">
+        <div class="kpi-header">
+          <span class="kpi-title">Active Rooms</span>
+          <div class="kpi-icon-wrap">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M1 2.5A1.5 1.5 0 0 1 2.5 1h3A1.5 1.5 0 0 1 7 2.5v3A1.5 1.5 0 0 1 5.5 7h-3A1.5 1.5 0 0 1 1 5.5v-3zm8 0A1.5 1.5 0 0 1 10.5 1h3A1.5 1.5 0 0 1 15 2.5v3A1.5 1.5 0 0 1 13.5 7h-3A1.5 1.5 0 0 1 9 5.5v-3zm-8 8A1.5 1.5 0 0 1 2.5 9h3A1.5 1.5 0 0 1 7 10.5v3A1.5 1.5 0 0 1 5.5 15h-3A1.5 1.5 0 0 1 1 13.5v-3zm8 0A1.5 1.5 0 0 1 10.5 9h3a1.5 1.5 0 0 1 1.5 1.5v3a1.5 1.5 0 0 1-1.5 1.5h-3A1.5 1.5 0 0 1 9 13.5v-3z"/></svg>
+          </div>
+        </div>
+        <div class="kpi-value" id="kpi-active-rooms">0</div>
+        <div class="kpi-subtext" id="kpi-rooms-sub">0 peers in rooms</div>
+      </div>
+
+      <div class="admin-glass kpi-card">
+        <div class="kpi-header">
+          <span class="kpi-title">Total Sessions</span>
+          <div class="kpi-icon-wrap">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 3.5a.5.5 0 0 0-1 0V9a.5.5 0 0 0 .252.434l3.5 2a.5.5 0 0 0 .496-.868L8 8.71V3.5z"/><path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm7-8A7 7 0 1 1 1 8a7 7 0 0 1 14 0z"/></svg>
+          </div>
+        </div>
+        <div class="kpi-value" id="kpi-total-sessions">0</div>
+        <div class="kpi-subtext" id="kpi-sessions-sub">All-time served</div>
+      </div>
+
+      <div class="admin-glass kpi-card">
+        <div class="kpi-header">
+          <span class="kpi-title">Signaling Bandwidth</span>
+          <div class="kpi-icon-wrap">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path fill-rule="evenodd" d="M1 8a7 7 0 1 0 14 0A7 7 0 0 0 1 8zm15 0A8 8 0 1 1 0 8a8 8 0 0 1 16 0zM8.5 4.5a.5.5 0 0 0-1 0v5.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V4.5z"/></svg>
+          </div>
+        </div>
+        <div class="kpi-value" id="kpi-relayed-traffic">0 B</div>
+        <div class="kpi-subtext" id="kpi-traffic-sub">0 WebRTC signals</div>
+      </div>
+
+      <div class="admin-glass kpi-card">
+        <div class="kpi-header">
+          <span class="kpi-title">Process Memory</span>
+          <div class="kpi-icon-wrap">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M1 3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V3zm2 .5v9h10v-9H3z"/><path d="M5.5 5a.5.5 0 0 0 0 1h5a.5.5 0 0 0 0-1h-5zm0 2.5a.5.5 0 0 0 0 1h5a.5.5 0 0 0 0-1h-5zm0 2.5a.5.5 0 0 0 0 1h3a.5.5 0 0 0 0-1h-3z"/></svg>
+          </div>
+        </div>
+        <div class="kpi-value" id="kpi-system-resources">0 MB</div>
+        <div class="kpi-subtext" id="kpi-resources-sub">Load: 0, 0, 0</div>
+      </div>
+
+      <div class="admin-glass kpi-card">
+        <div class="kpi-header">
+          <span class="kpi-title">Server Uptime</span>
+          <div class="kpi-icon-wrap">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M0 2a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V2zm15 2h-14v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V4zm-3 4a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-5 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/></svg>
+          </div>
+        </div>
+        <div class="kpi-value" id="kpi-uptime">0s</div>
+        <div class="kpi-subtext" id="kpi-uptime-sub">AirRelay v4.2</div>
+      </div>
+    </section>
+
+    <!-- TELEMETRY & VISUAL CHARTS -->
+    <section class="telemetry-grid">
+      <!-- Rolling Connections Chart -->
+      <div class="admin-glass chart-card">
+        <div class="card-title-row">
+          <span class="card-title">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M0 0h1v15h15v1H0V0zm10 3.5a.5.5 0 0 1 .5-.5h4a.5.5 0 0 1 .5.5v4a.5.5 0 0 1-1 0V4.707l-4.146 4.147a.5.5 0 0 1-.708 0L7 6.707 3.354 10.354a.5.5 0 1 1-.708-.708l4-4a.5.5 0 0 1 .708 0L9.5 7.793 13.293 4H10.5a.5.5 0 0 1-.5-.5z"/></svg>
+            Live Connections Timeline (60s rolling)
+          </span>
+          <span style="font-size: 0.8rem; font-weight: 600; color: var(--admin-accent);" id="sparkline-rate">0 connected</span>
+        </div>
+        <div class="sparkline-container">
+          <svg class="sparkline-svg" id="sparkline-svg" preserveAspectRatio="none" viewBox="0 0 600 160">
+            <!-- Rendered by admin.js -->
+          </svg>
+        </div>
+      </div>
+
+      <!-- Environment & Distribution -->
+      <div class="admin-glass chart-card">
+        <div class="card-title-row">
+          <span class="card-title">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/><path d="M4 8a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 0 1h-7A.5.5 0 0 1 4 8z"/></svg>
+            OS & Client Breakdown
+          </span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 16px;">
+          <div>
+            <div style="font-size: 0.72rem; text-transform: uppercase; color: var(--admin-text-muted); margin-bottom: 8px; font-weight: 600;">Operating System</div>
+            <div class="distribution-list" id="os-dist-list">
+              <!-- Rendered by admin.js -->
+            </div>
+          </div>
+          <div>
+            <div style="font-size: 0.72rem; text-transform: uppercase; color: var(--admin-text-muted); margin-bottom: 8px; font-weight: 600;">Browser Engine</div>
+            <div class="distribution-list" id="browser-dist-list">
+              <!-- Rendered by admin.js -->
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TABLES & VIEWS -->
+    <section class="admin-glass admin-table-section">
+      <div class="table-toolbar">
+        <div class="nav-tabs-custom">
+          <button class="tab-btn active" id="tab-peers-btn">
+            <span>Active Connections</span>
+            <span class="tab-count-badge" id="tab-peers-count">0</span>
+          </button>
+          <button class="tab-btn" id="tab-rooms-btn">
+            <span>Active Rooms</span>
+            <span class="tab-count-badge" id="tab-rooms-count">0</span>
+          </button>
+          <button class="tab-btn" id="tab-history-btn">
+            <span>Session History</span>
+            <span class="tab-count-badge" id="tab-history-count">0</span>
+          </button>
+          <button class="tab-btn" id="tab-events-btn">
+            <span>Audit Feed</span>
+            <span class="tab-count-badge" id="tab-events-count">0</span>
+          </button>
+        </div>
+
+        <div class="toolbar-filters">
+          <div class="search-input-wrap">
+            <svg class="search-icon" width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z"/>
+            </svg>
+            <input type="text" id="table-search-input" placeholder="Filter by ID, name, IP, room...">
+          </div>
+
+          <select class="admin-select" id="table-status-filter">
+            <option value="all">Status: All</option>
+            <option value="active">Active</option>
+            <option value="idle">Idle</option>
+            <option value="stale">Stale</option>
+          </select>
+
+          <select class="admin-select" id="table-role-filter">
+            <option value="all">Role: All</option>
+            <option value="host">Host Only</option>
+            <option value="guest">Guest Only</option>
+          </select>
+
+          <select class="admin-select" id="table-os-filter">
+            <option value="all">OS: All</option>
+            <option value="apple">Apple (macOS/iOS)</option>
+            <option value="windows">Windows</option>
+            <option value="android">Android</option>
+            <option value="linux">Linux</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- VIEW 1: ACTIVE CONNECTIONS -->
+      <div id="view-peers" class="table-responsive">
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>Status</th>
+              <th>Peer ID</th>
+              <th>Display Name</th>
+              <th>Role</th>
+              <th>Room ID</th>
+              <th>IP & Network</th>
+              <th>Device / OS</th>
+              <th>Browser</th>
+              <th>Uptime</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="peers-table-body">
+            <!-- Populated via admin.js -->
+          </tbody>
+        </table>
+      </div>
+
+      <!-- VIEW 2: ACTIVE ROOMS -->
+      <div id="view-rooms" class="table-responsive" style="display: none;">
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>Room ID</th>
+              <th>Host Peer</th>
+              <th>Members</th>
+              <th>Participants</th>
+              <th>Duration</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="rooms-table-body">
+            <!-- Populated via admin.js -->
+          </tbody>
+        </table>
+      </div>
+
+      <!-- VIEW 3: SESSION HISTORY -->
+      <div id="view-history" class="table-responsive" style="display: none;">
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>Peer ID</th>
+              <th>Display Name</th>
+              <th>Role</th>
+              <th>IP Address</th>
+              <th>Platform</th>
+              <th>Session Time</th>
+              <th>Disconnect Reason</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="history-table-body">
+            <!-- Populated via admin.js -->
+          </tbody>
+        </table>
+      </div>
+
+      <!-- VIEW 4: AUDIT LOG FEED -->
+      <div id="view-events" style="display: none; padding: 20px;">
+        <div class="audit-list" id="events-feed-list">
+          <!-- Populated via admin.js -->
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- MODAL: LOGIN -->
+  <div class="admin-modal-overlay" id="login-modal">
+    <div class="admin-modal-content" style="max-width: 400px;">
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <div class="brand-icon" style="width: 28px; height: 28px;">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a2 2 0 0 1 2 2v4H6V3a2 2 0 0 1 2-2zm3 6V3a3 3 0 0 0-6 0v4a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/></svg>
+          </div>
+          <h3>Admin Authentication</h3>
+        </div>
+      </div>
+      <form id="login-form">
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="login-username-input">Administrator Username</label>
+            <input type="text" id="login-username-input" class="form-control" placeholder="Enter admin username" required autocomplete="username">
+          </div>
+          <div class="form-group">
+            <label for="login-password-input">Master Password</label>
+            <input type="password" id="login-password-input" class="form-control" placeholder="Enter admin password" required autocomplete="current-password">
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <input type="checkbox" id="login-remember-check" checked>
+            <label for="login-remember-check" style="font-size: 0.8rem; color: var(--admin-text-secondary); cursor: pointer;">Remember this session</label>
+          </div>
+          <div id="login-error" style="display: none; font-size: 0.82rem; color: var(--admin-status-danger); background: var(--admin-status-danger-bg); padding: 8px 12px; border-radius: var(--admin-radius-sm);"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="submit" class="admin-btn admin-btn-primary" id="login-submit-btn" style="width: 100%; justify-content: center;">Sign In to Console</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: PEER DETAILS -->
+  <div class="admin-modal-overlay" id="peer-detail-modal">
+    <div class="admin-modal-content" style="max-width: 680px;">
+      <div class="modal-header">
+        <h3>Peer Diagnostic Telemetry</h3>
+        <button class="admin-btn admin-btn-sm" id="peer-detail-close-btn">✕</button>
+      </div>
+      <div class="modal-body" id="peer-detail-content">
+        <!-- Populated via admin.js -->
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: BROADCAST ANNOUNCEMENT -->
+  <div class="admin-modal-overlay" id="broadcast-modal">
+    <div class="admin-modal-content">
+      <div class="modal-header">
+        <h3>System Broadcast Announcement</h3>
+      </div>
+      <form id="broadcast-form">
+        <div class="modal-body">
+          <p style="font-size: 0.82rem; color: var(--admin-text-secondary);">
+            Send an instant notification banner to connected users. Files transfers will continue uninterrupted.
+          </p>
+          <div class="form-group">
+            <label for="broadcast-msg-input">Announcement Message</label>
+            <textarea id="broadcast-msg-input" class="form-control" placeholder="E.g. Server maintenance scheduled in 10 minutes." required></textarea>
+          </div>
+          <div class="detail-grid">
+            <div class="form-group">
+              <label for="broadcast-room-input">Target Room (Optional)</label>
+              <input type="text" id="broadcast-room-input" class="form-control" placeholder="Leave empty for all peers">
+            </div>
+            <div class="form-group">
+              <label for="broadcast-level-select">Severity Level</label>
+              <select id="broadcast-level-select" class="form-control">
+                <option value="info">Info (Blue)</option>
+                <option value="warning">Warning (Amber)</option>
+                <option value="danger">Urgent / Alert (Red)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="admin-btn" id="broadcast-cancel-btn">Cancel</button>
+          <button type="submit" class="admin-btn admin-btn-primary" id="broadcast-submit-btn">Send Announcement</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: KICK CONFIRMATION -->
+  <div class="admin-modal-overlay" id="kick-modal">
+    <div class="admin-modal-content" style="max-width: 440px;">
+      <div class="modal-header">
+        <h3 style="color: var(--admin-status-danger);">Disconnect Peer</h3>
+      </div>
+      <div class="modal-body">
+        <p style="font-size: 0.85rem;">Are you sure you want to disconnect <strong id="kick-target-name"></strong>?</p>
+        <div class="form-group" style="margin-top: 10px;">
+          <label for="kick-reason-input">Disconnection Reason</label>
+          <input type="text" id="kick-reason-input" class="form-control" value="Disconnected by administrator">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="admin-btn" id="kick-cancel-btn">Cancel</button>
+        <button class="admin-btn admin-btn-danger" id="kick-confirm-btn">Confirm Kick</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST CONTAINER -->
+  <div class="admin-toast-container" id="admin-toast-container"></div>
+
+  <script type="module" src="js/admin.js"></script>
+</body>
+</html>

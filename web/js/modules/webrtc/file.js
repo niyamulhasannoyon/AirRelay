@@ -1,6 +1,10 @@
 import { turn } from './turn.js';
 import { applyIceMode } from './mode.js';
 import { Peer } from './peer.js';
+import { computeSha256 } from '../crypto.js';
+import { inspectPeerConnection, renderTelemetryBadge } from '../telemetry.js';
+import { acquireWakeLock, releaseWakeLock } from '../wakelock.js';
+import { soundTransferComplete, soundError } from '../sound.js';
 
 const CHUNK_SIZE = 16 * 1024;          // 16 KiB — under SCTP message-size limits on every browser.
 const HIGH_WATER = 64 * 1024;          // 64 KiB — pause reads when DataChannel buffer reaches 64 KB cap.
@@ -87,6 +91,9 @@ export class File {
   _speedSamples = [];
   _speed = 0;
   _eta = null;
+  _hash = null;
+  _senderHash = null;
+  _telemetryPollTimer = null;
 
   _recordProgress(currentBytes) {
     const now = Date.now();
@@ -169,6 +176,8 @@ export class File {
   set owner_name(value) { this._owner_name = value }
   set zip(value) { this._zip = value }
   setZipController(c) { this._zipController = c }
+  get hash() { return this._hash; }
+  set hash(value) { this._hash = value; }
 
   async init(peer_id) {
     // Get ICE servers. Caller is responsible for surfacing this — file.init is used
@@ -270,6 +279,22 @@ export class File {
     // Store peer data
     this._remotePeers[data.peer_id] = {"user_id": data.requester_id, "user_name": data.requester_name, "peer": null, "conn": null, "online": true, "interval": null, "progress": 0, "aborted": false}
 
+    // Acquire screen wake lock so device doesn't sleep mid-transfer
+    acquireWakeLock(this._id);
+
+    // Concurrently compute file hash if not already cached
+    if (!this._hash && this._content) {
+      computeSha256(this._content).then((h) => {
+        this._hash = h;
+        const verifiedBadge = document.getElementById(`file-${this._id}-verified`);
+        if (verifiedBadge && h) {
+          verifiedBadge.style.display = 'inline-flex';
+          verifiedBadge.dataset.hash = h;
+          verifiedBadge.title = `SHA-256: ${h}\nClick to view full checksum`;
+        }
+      }).catch(() => {});
+    }
+
     // Connect to peer_id
     await this.connect(data.peer_id)
 
@@ -278,23 +303,39 @@ export class File {
     const dc = conn.dataChannel;
     if (!dc) {
       console.error('No raw RTCDataChannel exposed for this connection.');
+      releaseWakeLock(this._id);
       this._cancelReceiver(conn, 'no-data-channel');
       throw new Error('transfer failed: no-data-channel');
     }
     dc.bufferedAmountLowThreshold = LOW_WATER;
+
+    // Inspect connection topology and live latency (LAN vs NAT vs Relay)
+    const pc = conn.peerConnection;
+    if (pc) {
+      const updateTel = async () => {
+        const tel = await inspectPeerConnection(pc);
+        if (tel) {
+          const badgeEl = document.getElementById(`file-${this._id}-telemetry`);
+          if (badgeEl) badgeEl.innerHTML = renderTelemetryBadge(tel);
+        }
+      };
+      updateTel();
+      this._telemetryPollTimer = setInterval(updateTel, 2000);
+    }
 
     // Init interval to check connection status
     const entry = this._remotePeers[data.peer_id];
     entry.interval = setInterval(() => this._isAlive(conn.peer), 500)
     this._watchIce(entry, conn);
 
-    // Send header (size + start offset). offset > 0 means the receiver asked to
+    // Send header (size + start offset + sha-256 hash). offset > 0 means the receiver asked to
     // resume an interrupted transfer and already holds those bytes durably.
     const offset = _clampOffset(data.resume_offset, this._size);
     try {
-      dc.send(JSON.stringify({ type: 'header', size: this._size, offset }));
+      dc.send(JSON.stringify({ type: 'header', size: this._size, offset, hash: this._hash }));
     } catch (err) {
       console.error('Failed to send transfer header:', err);
+      releaseWakeLock(this._id);
       this._cancelReceiver(conn, 'header-failed');
       throw new Error('transfer failed: header-failed');
     }
@@ -307,6 +348,7 @@ export class File {
     while (sent < this._size) {
       // Aborted by either side, file removed, or peer disconnected
       if (this._aborted) {
+        releaseWakeLock(this._id);
         this._cancelReceiver(conn, 'aborted');
         return;
       }
@@ -325,6 +367,7 @@ export class File {
         buf = await this._content.slice(sent, end).arrayBuffer();
       } catch (err) {
         console.error('Failed to read file slice:', err);
+        releaseWakeLock(this._id);
         this._cancelReceiver(conn, 'read-failed');
         throw new Error('transfer failed: read-failed');
       }
@@ -334,6 +377,7 @@ export class File {
         dc.send(buf);
       } catch (err) {
         console.error('DataChannel send failed:', err);
+        releaseWakeLock(this._id);
         // The watchdog may have closed the channel while we were reading the slice —
         // report the loss it already announced instead of an unrelated send failure.
         if (entry.lost) throw new Error('transfer failed: connection-lost');
@@ -341,11 +385,16 @@ export class File {
         throw new Error('transfer failed: send-failed');
       }
       sent = end;
-      const senderProgress = this._size > 0 ? Math.floor(sent / this._size * 100) : 0;
+      const senderProgress = this._size > 0 ? Math.floor(sent / this._size * 100) : 100;
       this._renderTransferProgress(senderProgress, sent);
     }
 
     if (failure) {
+      releaseWakeLock(this._id);
+      if (this._telemetryPollTimer) {
+        clearInterval(this._telemetryPollTimer);
+        this._telemetryPollTimer = null;
+      }
       if (entry && entry.interval) {
         clearInterval(entry.interval);
         entry.interval = null;
@@ -359,9 +408,14 @@ export class File {
     // Send end marker (best-effort; channel may have closed)
     try {
       await this._awaitDrain(dc);
-      dc.send(JSON.stringify({ type: 'end' }));
+      dc.send(JSON.stringify({ type: 'end', hash: this._hash }));
     } catch {}
 
+    releaseWakeLock(this._id);
+    if (this._telemetryPollTimer) {
+      clearInterval(this._telemetryPollTimer);
+      this._telemetryPollTimer = null;
+    }
     if (entry && entry.interval) {
       clearInterval(entry.interval);
       entry.interval = null;
@@ -444,6 +498,11 @@ export class File {
   // sink — and with it the partial bytes — plus all resume state.
   _discardPartial() {
     this._clearStall();
+    if (this._telemetryPollTimer) {
+      clearInterval(this._telemetryPollTimer);
+      this._telemetryPollTimer = null;
+    }
+    releaseWakeLock(this._id);
     const sink = this._sink;
     this._sink = null;
     if (sink) {
@@ -540,7 +599,7 @@ export class File {
 
         // Receiver-side handlers (sender -> receiver):
         case 'header':    return this._onHeader(conn, msg);
-        case 'end':       return this._onEnd(conn);
+        case 'end':       return this._onEnd(conn, msg);
         case 'cancel':    return this._onSenderCancel(conn, msg);
       }
       return;
@@ -562,6 +621,28 @@ export class File {
     }
     // Ignore headers from a connection we already replaced (resume attempts).
     if (this._conn && this._conn !== conn) return;
+
+    // Record sender hash if announced in header
+    if (header && header.hash) {
+      this._senderHash = header.hash;
+    }
+
+    // Prevent screen sleep during download
+    acquireWakeLock(this._id);
+
+    // Track active connection topology (Direct LAN vs P2P vs Relay)
+    const pc = conn.peerConnection;
+    if (pc) {
+      const updateTel = async () => {
+        const tel = await inspectPeerConnection(pc);
+        if (tel) {
+          const badgeEl = document.getElementById(`file-${this._id}-telemetry`);
+          if (badgeEl) badgeEl.innerHTML = renderTelemetryBadge(tel);
+        }
+      };
+      updateTel();
+      this._telemetryPollTimer = setInterval(updateTel, 2000);
+    }
 
     // The sender must agree with the size we learned from the file-add metadata.
     // A mismatch means a corrupted or malicious sender — refuse to stream into the
@@ -649,6 +730,12 @@ export class File {
       try { this._zipController.error(new Error(reason)); } catch {}
       this._zipController = null;
     }
+    if (this._telemetryPollTimer) {
+      clearInterval(this._telemetryPollTimer);
+      this._telemetryPollTimer = null;
+    }
+    releaseWakeLock(this._id);
+
     try { if (this._peer) this._peer.destroy(); } catch {}
     this._conn = null;
     this._in_progress = false;
@@ -656,6 +743,7 @@ export class File {
     this._resumeOffset = 0;
     this._flushed = 0;
     if (message) {
+      soundError();
       $set(`file-${this._id}-progress`, 'textContent', '');
       $set(`file-${this._id}-speed`, 'textContent', '');
       $set(`file-${this._id}-eta`, 'textContent', '');
@@ -790,8 +878,14 @@ export class File {
     this._terminateReceive(conn, 'sender-cancel', 'The sender stopped the transfer.');
   }
 
-  async _onEnd(conn) {
+  async _onEnd(conn, msg) {
     this._clearStall();
+    if (this._telemetryPollTimer) {
+      clearInterval(this._telemetryPollTimer);
+      this._telemetryPollTimer = null;
+    }
+    releaseWakeLock(this._id);
+
     // Never finalize a file whose byte count disagrees with what was announced —
     // that would mark a corrupt/truncated transfer as a success.
     if (this._transferred !== this._size) {
@@ -825,7 +919,23 @@ export class File {
       $style(`file-${this._id}-abort`, 'display', 'none');
       $style(`file-${this._id}-icon-loading`, 'display', 'none');
       $style(`file-${this._id}-icon-success`, 'display', 'block');
+      soundTransferComplete();
     }
+
+    // Set verified SHA-256 badge
+    const finalHash = (msg && msg.hash) || this._senderHash;
+    if (finalHash) {
+      this._hash = finalHash;
+      const verifiedBadge = document.getElementById(`file-${this._id}-verified`);
+      if (verifiedBadge) {
+        verifiedBadge.style.display = 'inline-flex';
+        verifiedBadge.dataset.hash = finalHash;
+        verifiedBadge.title = `SHA-256: ${finalHash}\nClick to view full checksum`;
+      }
+    }
+
+    // Play tactile completion chime
+    soundTransferComplete();
 
     this._in_progress = false;
     this._resumeOffset = 0;
@@ -860,6 +970,12 @@ export class File {
     }
 
     if (overall_progress == 100) {
+      soundTransferComplete();
+      releaseWakeLock(this._id);
+      if (this._telemetryPollTimer) {
+        clearInterval(this._telemetryPollTimer);
+        this._telemetryPollTimer = null;
+      }
       $style(`file-${this._id}-abort`, 'display', 'none');
       $style(`file-${this._id}-icon-loading`, 'display', 'none');
       $style(`file-${this._id}-icon-success`, 'display', 'block');

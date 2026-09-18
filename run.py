@@ -46,9 +46,19 @@ server.include_router(signaling_router)
 # Serve web frontend files and SPA room routes
 @server.api_route("/{full_path:path}", methods=["GET", "HEAD"])
 async def serve_frontend(full_path: str):
-    # Strip leading slash
-    clean_path = full_path.lstrip("/")
+    # Strip leading and trailing slashes for routing checks
+    clean_path = full_path.strip("/")
     target = WEB_DIR / clean_path
+
+    # Route /admin or /admin/ to web/admin/index.html
+    if clean_path == "admin":
+        admin_index = WEB_DIR / "admin" / "index.html"
+        if admin_index.is_file():
+            return FileResponse(admin_index, media_type="text/html")
+
+    # If it is a directory containing an index.html, serve that index
+    if clean_path and target.is_dir() and (target / "index.html").is_file():
+        return FileResponse(target / "index.html", media_type="text/html")
 
     # If it is a real static file in web/, serve it directly
     if clean_path and target.is_file():
@@ -60,6 +70,12 @@ async def serve_frontend(full_path: str):
             media_type = "application/javascript"
         elif target.name.endswith(".css"):
             media_type = "text/css"
+        elif target.name.endswith(".svg"):
+            media_type = "image/svg+xml"
+        elif target.name.endswith(".json"):
+            media_type = "application/json"
+        elif target.name.endswith(".png"):
+            media_type = "image/png"
         return FileResponse(target, media_type=media_type)
 
     # For root `/` and any SPA room paths (e.g. `/abc-def-ghi`), serve index.html

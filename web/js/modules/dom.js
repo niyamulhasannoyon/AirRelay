@@ -84,17 +84,38 @@ export const dom = {
   download_modal_cancel_spinner: document.getElementById('download-modal-cancel-spinner'),
   download_modal_close: document.getElementById('download-modal-close'),
 
+  // SOUND & SHORTCUTS
+  sound_toggle_btn: document.getElementById('sound-toggle-btn'),
+  sound_icon_on: document.getElementById('sound-icon-on'),
+  sound_icon_off: document.getElementById('sound-icon-off'),
+  shortcuts_btn: document.getElementById('shortcuts-btn'),
+  shortcuts_modal: document.getElementById('shortcuts-modal'),
+
+  // CHECKSUM & INTEGRITY MODAL
+  checksum_modal: document.getElementById('checksum-modal'),
+  checksum_modal_hash: document.getElementById('checksum-modal-hash'),
+  checksum_modal_copy: document.getElementById('checksum-modal-copy'),
+  checksum_modal_filename: document.getElementById('checksum-modal-filename'),
+
+  // NETWORK DIAGNOSTICS MODAL
+  diagnostics_modal: document.getElementById('diagnostics-modal'),
+  diagnostics_modal_content: document.getElementById('diagnostics-modal-content'),
+
+  // DRAG OVERLAY
+  drag_overlay: document.getElementById('drag-overlay'),
+
   // NOTIFICATION
   notification_modal: document.getElementById('notification-modal'),
   notification_modal_value: document.getElementById('notification-modal-value'),
 }
 
 // Display a confirmation dialog when the user attempts to refresh or navigate away from the page.
-window.addEventListener("beforeunload", (event) => {
-  // Safari (and older Chrome) only show the prompt when returnValue is set.
-  event.preventDefault();
-  event.returnValue = '';
-});
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+  window.addEventListener("beforeunload", (event) => {
+    event.preventDefault();
+    event.returnValue = '';
+  });
+}
 
 // Toast notification
 let _toastTimeout = null;
@@ -123,11 +144,11 @@ export function showToast(message, type = 'success') {
 }
 
 // Focus the password input after the fade animation
-dom.password_modal.addEventListener('shown.bs.modal', () => {
-  dom.password_modal_value.focus()
+dom.password_modal?.addEventListener?.('shown.bs.modal', () => {
+  dom.password_modal_value?.focus?.()
 });
 
 // Focus the name input after the fade animation
-dom.name_modal.addEventListener('shown.bs.modal', () => {
-  dom.name_modal_value.focus()
+dom.name_modal?.addEventListener?.('shown.bs.modal', () => {
+  dom.name_modal_value?.focus?.()
 });
