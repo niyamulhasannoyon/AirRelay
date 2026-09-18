@@ -51,18 +51,16 @@ COPY --chown=nginx:nginx web /filesync/web
 # Copy Nginx config
 COPY nginx.conf /etc/nginx/http.d/default.conf
 
-# Health check: verify nginx (/) and backend (/health) are both responding
+# Copy entrypoint script
+COPY docker-entrypoint.sh /filesync/docker-entrypoint.sh
+RUN chmod +x /filesync/docker-entrypoint.sh
+
+# Health check: verify nginx (at dynamic $PORT or 80) and backend (/health) are both responding
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD wget -qO /dev/null http://127.0.0.1/ && wget -qO /dev/null http://127.0.0.1:8000/health
+    CMD wget -qO /dev/null http://127.0.0.1:${PORT:-80}/ && wget -qO /dev/null http://127.0.0.1:8000/health
 
-# Expose ports
-EXPOSE 80
+# Expose standard HTTP and Render default container ports
+EXPOSE 80 10000
 
-# Start FastAPI + Nginx. bash's `wait -n` returns as soon as EITHER process exits, so the
-# container stops (and `restart: unless-stopped` restarts it) if the backend dies —
-# instead of nginx keeping a half-dead container alive indefinitely. (busybox sh's
-# `wait -n` does not reliably fire for a backgrounded child as PID 1, so we use bash.)
-# --ws-max-size caps WebSocket frames at the transport (uvicorn's default is 16 MiB,
-# which would be fully buffered before the app's own 32 KiB payload check runs);
-# 64 KiB leaves headroom over the signaling _MAX_PAYLOAD_BYTES limit.
-CMD ["bash", "-c", "python3 -m uvicorn api.main:app --host 0.0.0.0 --port 8000 --ws-max-size 65536 & nginx -g 'daemon off;' & wait -n"]
+# Run entrypoint script which binds Nginx to $PORT and starts FastAPI
+ENTRYPOINT ["/filesync/docker-entrypoint.sh"]

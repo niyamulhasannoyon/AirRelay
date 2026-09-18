@@ -51,12 +51,12 @@ if _cors_origins:
     )
 
 # Add root route
-@app.get("/")
+@app.api_route("/", methods=["GET", "HEAD"])
 async def root():
     return {"message": "Welcome to AirRelay API!", "app": "AirRelay", "version": app.version}
 
 # Add health check route
-@app.get("/health")
+@app.api_route("/health", methods=["GET", "HEAD"])
 async def health_check():
     return {"status": "ok", "app": "AirRelay", "message": "AirRelay API is running!", "version": app.version}
 
