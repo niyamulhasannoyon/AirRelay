@@ -19,6 +19,8 @@ class Turn {
     // when UDP is blocked — a common case on corporate networks, some mobile carriers,
     // and most public Wi-Fi captive portals. coturn listens for both on port 3478.
     return [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
       { urls: `stun:${host}:3478` },
       {
         urls: [
