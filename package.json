@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "start": "python3 run.py",
     "lint": "eslint .",
     "test": "node --test tests/js/*.test.mjs"
   },
