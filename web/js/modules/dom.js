@@ -73,6 +73,21 @@ export const dom = {
 
   // TRANSFER
   transfer_div: document.getElementById('transfer-div'),
+  connected_summary_bar: document.getElementById('connected-summary-bar'),
+  connected_peers_tags: document.getElementById('connected-peers-tags'),
+  toggle_room_details_btn: document.getElementById('toggle-room-details-btn'),
+  toggle_room_details_text: document.getElementById('toggle-room-details-text'),
+  toggle_room_details_chevron: document.getElementById('toggle-room-details-chevron'),
+  connection_details_panel: document.getElementById('connection-details-panel'),
+  hero_section: document.getElementById('hero-section'),
+
+  // FILES FILTER BAR
+  filter_tab_all: document.getElementById('filter-tab-all'),
+  filter_tab_sent: document.getElementById('filter-tab-sent'),
+  filter_tab_received: document.getElementById('filter-tab-received'),
+  filter_count_all: document.getElementById('filter-count-all'),
+  filter_count_sent: document.getElementById('filter-count-sent'),
+  filter_count_received: document.getElementById('filter-count-received'),
 
   transfer_qr_code: document.getElementById('transfer-qr-code'),
   transfer_status_protected: document.getElementById('transfer-status-protected'),
@@ -185,11 +200,26 @@ export const dom = {
   approval_accept_btn: document.getElementById('approval-accept-btn'),
   approval_reject_btn: document.getElementById('approval-reject-btn'),
 
-  // LIGHTBOX MODAL
+  // LIGHTBOX / UNIVERSAL MEDIA VIEWER MODAL
   lightbox_modal: document.getElementById('lightbox-modal'),
+  lightbox_badge: document.getElementById('lightbox-badge'),
   lightbox_image: document.getElementById('lightbox-image'),
   lightbox_caption: document.getElementById('lightbox-caption'),
+  lightbox_size_pill: document.getElementById('lightbox-size-pill'),
   lightbox_download: document.getElementById('lightbox-download'),
+  lightbox_loading: document.getElementById('lightbox-loading'),
+  lightbox_image_wrap: document.getElementById('lightbox-image-wrap'),
+  lightbox_video_wrap: document.getElementById('lightbox-video-wrap'),
+  lightbox_video: document.getElementById('lightbox-video'),
+  lightbox_audio_wrap: document.getElementById('lightbox-audio-wrap'),
+  lightbox_audio: document.getElementById('lightbox-audio'),
+  lightbox_doc_wrap: document.getElementById('lightbox-doc-wrap'),
+  lightbox_doc_frame: document.getElementById('lightbox-doc-frame'),
+  lightbox_text_wrap: document.getElementById('lightbox-text-wrap'),
+  lightbox_text_content: document.getElementById('lightbox-text-content'),
+  lightbox_generic_wrap: document.getElementById('lightbox-generic-wrap'),
+  lightbox_generic_name: document.getElementById('lightbox-generic-name'),
+  lightbox_generic_info: document.getElementById('lightbox-generic-info'),
 
   // NOTIFICATION
   notification_modal: document.getElementById('notification-modal'),

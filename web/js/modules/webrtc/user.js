@@ -3,7 +3,7 @@ import { turn } from './turn.js';
 import { applyIceMode } from './mode.js';
 import { File } from './file.js';
 import { Peer } from './peer.js';
-import { openSink } from '../sink.js';
+import { openSink, openMemoryBlobSink, saveBlobToDisk } from '../sink.js';
 import { downloadZip } from '../../vendors/client-zip.min.js';
 import { soundFileDrop, soundPeerJoin, soundPeerLeave } from '../sound.js';
 import { computeSha256, generateUUID } from '../crypto.js';
@@ -124,7 +124,7 @@ export function getOSIconSVG(os, size = 16) {
   }
 }
 
-export async function generateImageThumbnail(fileBlob, maxDim = 160) {
+export async function generateImageThumbnail(fileBlob, maxDim = 320) {
   if (typeof window === 'undefined' || typeof document === 'undefined') return null;
   try {
     if (typeof createImageBitmap === 'function') {
@@ -142,30 +142,93 @@ export async function generateImageThumbnail(fileBlob, maxDim = 160) {
   return null;
 }
 
+export async function generateVideoThumbnail(fileBlob, seekSeconds = 1.0, maxDim = 320) {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return null;
+  return new Promise((resolve) => {
+    try {
+      const video = document.createElement('video');
+      video.preload = 'metadata';
+      video.muted = true;
+      video.playsInline = true;
+      const url = URL.createObjectURL(fileBlob);
+      video.src = url;
+
+      const cleanup = () => {
+        try {
+          video.pause();
+          video.removeAttribute('src');
+          video.load();
+        } catch {}
+        URL.revokeObjectURL(url);
+      };
+
+      const timer = setTimeout(() => {
+        cleanup();
+        resolve(null);
+      }, 4000);
+
+      video.onloadedmetadata = () => {
+        const dur = video.duration;
+        const time = (dur && dur > 0) ? Math.min(seekSeconds, dur / 2) : 0.1;
+        video.currentTime = time;
+      };
+
+      video.onseeked = () => {
+        try {
+          const vw = video.videoWidth || 320;
+          const vh = video.videoHeight || 180;
+          const scale = Math.min(maxDim / vw, maxDim / vh, 1);
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.max(1, Math.round(vw * scale));
+          canvas.height = Math.max(1, Math.round(vh * scale));
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.72);
+          clearTimeout(timer);
+          cleanup();
+          resolve(dataUrl);
+        } catch {
+          clearTimeout(timer);
+          cleanup();
+          resolve(null);
+        }
+      };
+
+      video.onerror = () => {
+        clearTimeout(timer);
+        cleanup();
+        resolve(null);
+      };
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
 export function getFileTypeInfo(filename) {
   const ext = (filename || '').split('.').pop().toLowerCase();
   if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico', 'avif'].includes(ext)) {
-    return { type: 'image', color: '#38bdf8', label: 'IMG', ext };
+    return { type: 'image', category: 'image', color: '#38bdf8', label: 'IMG', ext };
   }
-  if (['mp4', 'mov', 'avi', 'mkv', 'webm', 'm4v'].includes(ext)) {
-    return { type: 'video', color: '#a855f7', label: 'VID', ext };
+  if (['mp4', 'mov', 'avi', 'mkv', 'webm', 'm4v', '3gp'].includes(ext)) {
+    return { type: 'video', category: 'video', color: '#a855f7', label: 'VID', ext };
   }
-  if (['mp3', 'wav', 'flac', 'aac', 'ogg', 'm4a'].includes(ext)) {
-    return { type: 'audio', color: '#ec4899', label: 'AUD', ext };
+  if (['mp3', 'wav', 'flac', 'aac', 'ogg', 'm4a', 'opus'].includes(ext)) {
+    return { type: 'audio', category: 'audio', color: '#ec4899', label: 'AUD', ext };
   }
   if (['pdf'].includes(ext)) {
-    return { type: 'pdf', color: '#f43f5e', label: 'PDF', ext };
+    return { type: 'pdf', category: 'pdf', color: '#f43f5e', label: 'PDF', ext };
   }
   if (['zip', 'tar', 'gz', 'rar', '7z', 'bz2'].includes(ext)) {
-    return { type: 'archive', color: '#eab308', label: 'ZIP', ext };
+    return { type: 'archive', category: 'archive', color: '#eab308', label: 'ZIP', ext };
   }
-  if (['js', 'ts', 'py', 'html', 'css', 'json', 'cpp', 'c', 'go', 'rs', 'java', 'sql', 'sh', 'md'].includes(ext)) {
-    return { type: 'code', color: '#10b981', label: 'CODE', ext };
+  if (['js', 'ts', 'py', 'html', 'css', 'json', 'cpp', 'c', 'go', 'rs', 'java', 'sql', 'sh', 'md', 'xml', 'yaml', 'yml'].includes(ext)) {
+    return { type: 'code', category: 'code', color: '#10b981', label: 'CODE', ext };
   }
   if (['doc', 'docx', 'txt', 'rtf', 'odt', 'pages', 'xlsx', 'xls', 'csv', 'pptx', 'ppt'].includes(ext)) {
-    return { type: 'doc', color: '#3b82f6', label: 'DOC', ext };
+    return { type: 'doc', category: 'doc', color: '#3b82f6', label: 'DOC', ext };
   }
-  return { type: 'file', color: '#94a3b8', label: 'FILE', ext };
+  return { type: 'file', category: 'file', color: '#94a3b8', label: 'FILE', ext };
 }
 
 export class User {
@@ -190,9 +253,16 @@ export class User {
   _outboundActive = 0;
   _outboundQueue = [];  // each entry is the original `data` from webrtc-file-download
 
+  _currentFilter = 'all';
+  _currentTypeFilter = 'all';
+  _userManuallyExpandedRoom = false;
+
   constructor(room_id) {
     this._room_id = room_id;
     this._isHost = room_id.length == 0;
+    this._initConnectedBarHandlers();
+    this._initFilterTabs();
+    this._initMediaViewerModalEvents();
   }
 
   get id() {
@@ -271,6 +341,7 @@ export class User {
 
     dom.transfer_status_wait.style.display = 'none';
     dom.transfer_status_success.style.display = 'inline-block';
+    this._updateConnectedUI(true);
 
     const peers_list = [
       { id: this._peer.id, name: this._name, os: this._os },
@@ -598,9 +669,15 @@ export class User {
 
       if (typeInfo.category === 'image' && typeof window !== 'undefined') {
         try {
-          thumbnailData = await generateImageThumbnail(file, 160);
+          thumbnailData = await generateImageThumbnail(file, 320);
         } catch (e) {
           console.warn('Failed to generate thumbnail for', name, e);
+        }
+      } else if (typeInfo.category === 'video' && typeof window !== 'undefined') {
+        try {
+          thumbnailData = await generateVideoThumbnail(file, 1.0, 320);
+        } catch (e) {
+          console.warn('Failed to generate video thumbnail for', name, e);
         }
       }
 
@@ -618,12 +695,14 @@ export class User {
       // Create file instance
       const f = new File(fileData);
       if (previewUrl) f.previewUrl = previewUrl;
+      f.previewBlob = file;
 
       // Add file to the current user
       this._files[f.id] = f
 
       // Add file to the list
       this._addFileUI(f)
+      this._applyFileFilters();
 
       // Pre-compute SHA-256 hash immediately for data integrity
       if (file) {
@@ -694,6 +773,7 @@ export class User {
     document.getElementById(`file-${fileId}-error`).style.display = 'block'
     document.getElementById(`file-${fileId}-error`).innerHTML = 'You have removed this file.'
     showToast(`File "${this._files[fileId].name}" removed.`)
+    this._applyFileFilters();
   }
 
   // Download a file shared by another peer
@@ -1467,6 +1547,7 @@ export class User {
       dom.transfer_div.style.display = 'block'
       dom.transfer_status_wait.style.display = 'none'
       dom.transfer_status_success.style.display = 'inline-block'
+      this._updateConnectedUI(true);
       showToast('Connection established!')
 
       // Process Connected Peers
@@ -1545,6 +1626,7 @@ export class User {
           this._files[f.id] = f;
           this._addFileUI(f);
         }
+        this._applyFileFilters();
       }
     }
     else if ('webrtc-file-add' in data && conn.peer in this._remotePeers) {
@@ -1589,6 +1671,7 @@ export class User {
         dom.transfer_div.style.display = 'none'
         dom.error_div.style.display = 'block'
         dom.error_message.innerHTML = 'Host user has been disconnected.'
+        this._updateConnectedUI(false);
       }
     }
     // Host: A peer has closed the connection
@@ -1617,7 +1700,11 @@ export class User {
       if (Object.keys(this._remotePeers).length == 0) {
         dom.transfer_status_success.style.display = 'none'
         dom.transfer_status_wait.style.display = 'inline-block'
+        this._updateConnectedUI(false);
+      } else {
+        this._updateConnectedUI(true);
       }
+      this._applyFileFilters();
 
       // Notify all peers
       const peers_list = [{"id": this._peer.id, "name": this._name }, ...Object.entries(this._remotePeers).map(([k, v]) => ({"id": k, "name": v.name}))];
@@ -1691,6 +1778,7 @@ export class User {
 
       // Add file to the list
       this._addFileUI(f)
+      this._applyFileFilters();
 
       // Store file to send it to other peers
       const wireEntry = {"id": f.id, "name": f.name, "size": f.size, "owner_id": f.owner_id, "owner_name": f.owner_name};
@@ -1918,77 +2006,448 @@ export class User {
     showToast(`User ${userName} left.`, 'warning')
   }
 
+  _initConnectedBarHandlers() {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return;
+    if (dom.toggle_room_details_btn && typeof dom.toggle_room_details_btn.addEventListener === 'function') {
+      dom.toggle_room_details_btn.addEventListener('click', () => {
+        if (!dom.connection_details_panel || !dom.connection_details_panel.classList) return;
+        const isMinimized = dom.connection_details_panel.classList.contains('minimized');
+        if (isMinimized) {
+          dom.connection_details_panel.classList.remove('minimized');
+          this._userManuallyExpandedRoom = true;
+          if (dom.toggle_room_details_text) dom.toggle_room_details_text.textContent = 'Hide Room Info';
+          if (dom.toggle_room_details_chevron && dom.toggle_room_details_chevron.style) {
+            dom.toggle_room_details_chevron.style.transform = 'rotate(180deg)';
+          }
+        } else {
+          dom.connection_details_panel.classList.add('minimized');
+          this._userManuallyExpandedRoom = false;
+          if (dom.toggle_room_details_text) dom.toggle_room_details_text.textContent = 'Room Info';
+          if (dom.toggle_room_details_chevron && dom.toggle_room_details_chevron.style) {
+            dom.toggle_room_details_chevron.style.transform = 'rotate(0deg)';
+          }
+        }
+      });
+    }
+  }
+
+  _initFilterTabs() {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return;
+    const tabs = [
+      { el: dom.filter_tab_all, filter: 'all' },
+      { el: dom.filter_tab_sent, filter: 'sent' },
+      { el: dom.filter_tab_received, filter: 'received' },
+    ];
+    tabs.forEach(({ el, filter }) => {
+      if (el && typeof el.addEventListener === 'function') {
+        el.addEventListener('click', () => {
+          tabs.forEach(t => t.el?.classList?.remove('active'));
+          el.classList?.add('active');
+          this._currentFilter = filter;
+          this._applyFileFilters();
+        });
+      }
+    });
+
+    const typeChips = typeof document.querySelectorAll === 'function'
+      ? Array.from(document.querySelectorAll('.type-chip'))
+      : [];
+    typeChips.forEach(chip => {
+      if (chip && typeof chip.addEventListener === 'function') {
+        chip.addEventListener('click', () => {
+          typeChips.forEach(c => c.classList?.remove('active'));
+          chip.classList?.add('active');
+          this._currentTypeFilter = chip.getAttribute('data-type') || 'all';
+          this._applyFileFilters();
+        });
+      }
+    });
+  }
+
+  _initMediaViewerModalEvents() {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return;
+    if (dom.lightbox_modal && typeof dom.lightbox_modal.addEventListener === 'function') {
+      dom.lightbox_modal.addEventListener('hidden.bs.modal', () => {
+        this._resetUniversalViewer();
+      });
+    }
+  }
+
+  _updateConnectedUI(isConnected) {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return;
+    const peerCount = Object.keys(this._remotePeers).length;
+    const active = isConnected && peerCount > 0;
+
+    if (active) {
+      if (dom.connected_summary_bar && dom.connected_summary_bar.style) {
+        dom.connected_summary_bar.style.display = 'flex';
+      }
+      if (dom.hero_section && dom.hero_section.classList) {
+        dom.hero_section.classList.add('state-connected');
+      }
+      if (!this._userManuallyExpandedRoom && dom.connection_details_panel && dom.connection_details_panel.classList) {
+        dom.connection_details_panel.classList.add('minimized');
+        if (dom.toggle_room_details_text) dom.toggle_room_details_text.textContent = 'Room Info';
+        if (dom.toggle_room_details_chevron && dom.toggle_room_details_chevron.style) {
+          dom.toggle_room_details_chevron.style.transform = 'rotate(0deg)';
+        }
+      }
+      if (dom.connected_peers_tags) {
+        dom.connected_peers_tags.innerHTML = '';
+        for (const p of Object.values(this._remotePeers)) {
+          const pill = document.createElement('span');
+          pill.className = 'peer-tag-pill';
+          pill.textContent = p.name;
+          dom.connected_peers_tags.appendChild(pill);
+        }
+      }
+    } else {
+      if (dom.connected_summary_bar && dom.connected_summary_bar.style) {
+        dom.connected_summary_bar.style.display = 'none';
+      }
+      if (dom.hero_section && dom.hero_section.classList) {
+        dom.hero_section.classList.remove('state-connected');
+      }
+      if (dom.connection_details_panel && dom.connection_details_panel.classList) {
+        dom.connection_details_panel.classList.remove('minimized');
+      }
+    }
+  }
+
+  _applyFileFilters() {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return;
+    const allFiles = Object.values(this._files).filter(f => !f.aborted && !f.removed);
+    const sentFiles = allFiles.filter(f => f.owner_id == this._peer.id);
+    const receivedFiles = allFiles.filter(f => f.owner_id != this._peer.id);
+
+    if (dom.filter_count_all) dom.filter_count_all.textContent = String(allFiles.length);
+    if (dom.filter_count_sent) dom.filter_count_sent.textContent = String(sentFiles.length);
+    if (dom.filter_count_received) dom.filter_count_received.textContent = String(receivedFiles.length);
+
+    let visibleCount = 0;
+    for (const f of Object.values(this._files)) {
+      const card = document.getElementById(`file-${f.id}`);
+      if (!card) continue;
+
+      if (f.aborted || f.removed) {
+        if (card.style) card.style.display = 'none';
+        continue;
+      }
+
+      const isMine = f.owner_id == this._peer.id;
+      let matchesDirection = true;
+      if (this._currentFilter === 'sent') matchesDirection = isMine;
+      else if (this._currentFilter === 'received') matchesDirection = !isMine;
+
+      const typeInfo = getFileTypeInfo(f.name);
+      let matchesType = true;
+      if (this._currentTypeFilter === 'image') {
+        matchesType = typeInfo.category === 'image';
+      } else if (this._currentTypeFilter === 'video') {
+        matchesType = typeInfo.category === 'video';
+      } else if (this._currentTypeFilter === 'audio') {
+        matchesType = typeInfo.category === 'audio';
+      } else if (this._currentTypeFilter === 'doc') {
+        matchesType = ['doc', 'pdf', 'code'].includes(typeInfo.category);
+      }
+
+      const show = matchesDirection && matchesType;
+      if (card.style) card.style.display = show ? 'flex' : 'none';
+      if (show) visibleCount++;
+    }
+
+    if (dom.transfer_files_list_empty && dom.transfer_files_list_empty.style) {
+      dom.transfer_files_list_empty.style.display = visibleCount === 0 ? 'block' : 'none';
+    }
+  }
+
+  previewOrOpenFile(fileId) {
+    const file = this._files[fileId];
+    if (!file) return;
+    if (file.previewBlob || file.previewUrl || file._file || file.owner_id == this._peer.id) {
+      if (!file.previewUrl && file._file && typeof window !== 'undefined' && window.URL && window.URL.createObjectURL) {
+        file.previewUrl = URL.createObjectURL(file._file);
+      }
+      this._displayInUniversalViewer(file);
+    } else {
+      this._fetchAndPreviewRemoteFile(file);
+    }
+  }
+
+  async _fetchAndPreviewRemoteFile(file) {
+    if (!file) return;
+    if (file.previewBlob || file.previewUrl) {
+      this._displayInUniversalViewer(file);
+      return;
+    }
+
+    if (dom.lightbox_modal) {
+      this._resetUniversalViewer();
+      if (dom.lightbox_caption) dom.lightbox_caption.textContent = file.name;
+      if (dom.lightbox_size_pill) dom.lightbox_size_pill.textContent = this._parseBytes(file.size);
+      const typeInfo = getFileTypeInfo(file.name);
+      if (dom.lightbox_badge) {
+        dom.lightbox_badge.textContent = typeInfo.label;
+        dom.lightbox_badge.style.backgroundColor = `${typeInfo.color}15`;
+        dom.lightbox_badge.style.color = typeInfo.color;
+        dom.lightbox_badge.style.borderColor = `${typeInfo.color}30`;
+      }
+      if (dom.lightbox_loading) dom.lightbox_loading.style.display = 'block';
+
+      if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+        const modal = bootstrap.Modal.getOrCreateInstance(dom.lightbox_modal);
+        modal.show();
+      } else if (dom.lightbox_modal.classList) {
+        dom.lightbox_modal.classList.add('show');
+        dom.lightbox_modal.style.display = 'block';
+      }
+    }
+
+    if (file.in_progress || file._resuming) {
+      file.onPreviewReady((previewUrl, blob) => {
+        file.previewUrl = previewUrl;
+        file.previewBlob = blob;
+        this._renderFilePreview(file);
+        this._displayInUniversalViewer(file);
+      });
+      return;
+    }
+
+    try {
+      file._sink = openMemoryBlobSink(file.name);
+      if (file._sink && 'mode' in file._sink) file._sink._onCancel = () => file.abort();
+    } catch (err) {
+      console.error('Failed to open memory sink for preview:', err);
+      if (dom.lightbox_loading) dom.lightbox_loading.style.display = 'none';
+      showToast('Could not preview file. Try saving to disk.', 'warning');
+      return;
+    }
+
+    file.in_progress = true;
+    file._onInterrupted = () => this._handleFileInterrupted(file);
+
+    file.onPreviewReady((previewUrl, blob) => {
+      file.previewUrl = previewUrl;
+      file.previewBlob = blob;
+      this._renderFilePreview(file);
+      this._displayInUniversalViewer(file);
+    });
+
+    const dlEl = document.getElementById(`file-${file.id}-download`);
+    const abortEl = document.getElementById(`file-${file.id}-abort`);
+    const loadingEl = document.getElementById(`file-${file.id}-icon-loading`);
+    const progEl = document.getElementById(`file-${file.id}-progress`);
+    if (dlEl) dlEl.style.display = 'none';
+    if (abortEl) abortEl.style.display = 'block';
+    if (loadingEl) loadingEl.style.display = 'block';
+    if (progEl) progEl.textContent = '0% | ';
+
+    try {
+      await file.init();
+    } catch (err) {
+      console.warn('_fetchAndPreviewRemoteFile: file.init failed:', err);
+      this._abortDownloadStart(file, file.id, 'Could not start file streaming. Please try again.');
+      if (dom.lightbox_loading) dom.lightbox_loading.style.display = 'none';
+      return;
+    }
+
+    this._sendDownloadRequest(file);
+  }
+
+  _resetUniversalViewer() {
+    if (!dom.lightbox_modal) return;
+    if (dom.lightbox_loading) dom.lightbox_loading.style.display = 'none';
+    if (dom.lightbox_image_wrap) dom.lightbox_image_wrap.style.display = 'none';
+    if (dom.lightbox_video_wrap) dom.lightbox_video_wrap.style.display = 'none';
+    if (dom.lightbox_audio_wrap) dom.lightbox_audio_wrap.style.display = 'none';
+    if (dom.lightbox_doc_wrap) dom.lightbox_doc_wrap.style.display = 'none';
+    if (dom.lightbox_text_wrap) dom.lightbox_text_wrap.style.display = 'none';
+    if (dom.lightbox_generic_wrap) dom.lightbox_generic_wrap.style.display = 'none';
+    if (dom.lightbox_video) {
+      try {
+        dom.lightbox_video.pause();
+        dom.lightbox_video.removeAttribute('src');
+        dom.lightbox_video.load();
+      } catch {}
+    }
+    if (dom.lightbox_audio) {
+      try {
+        dom.lightbox_audio.pause();
+        dom.lightbox_audio.removeAttribute('src');
+        dom.lightbox_audio.load();
+      } catch {}
+    }
+    if (dom.lightbox_doc_frame) {
+      dom.lightbox_doc_frame.src = 'about:blank';
+    }
+    if (dom.lightbox_image) {
+      dom.lightbox_image.src = '';
+    }
+  }
+
+  async _displayInUniversalViewer(file) {
+    if (!dom.lightbox_modal) return;
+    this._resetUniversalViewer();
+
+    const typeInfo = getFileTypeInfo(file.name);
+
+    if (dom.lightbox_caption) dom.lightbox_caption.textContent = file.name;
+    if (dom.lightbox_size_pill) dom.lightbox_size_pill.textContent = this._parseBytes(file.size);
+    if (dom.lightbox_badge) {
+      dom.lightbox_badge.textContent = typeInfo.label;
+      dom.lightbox_badge.style.backgroundColor = `${typeInfo.color}15`;
+      dom.lightbox_badge.style.color = typeInfo.color;
+      dom.lightbox_badge.style.borderColor = `${typeInfo.color}30`;
+    }
+
+    // Configure "Save to Device" button
+    if (dom.lightbox_download) {
+      dom.lightbox_download.onclick = (e) => {
+        e.preventDefault();
+        if (file.previewBlob) {
+          saveBlobToDisk(file.previewBlob, file.name);
+        } else if (file._file) {
+          saveBlobToDisk(file._file, file.name);
+        } else if (file.previewUrl) {
+          const a = document.createElement('a');
+          a.href = file.previewUrl;
+          a.download = file.name;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+        } else {
+          this.downloadFile(file.id);
+        }
+      };
+    }
+
+    const src = file.previewUrl || file.thumbnail;
+
+    if (typeInfo.category === 'image') {
+      if (dom.lightbox_image_wrap && dom.lightbox_image) {
+        dom.lightbox_image_wrap.style.display = 'flex';
+        dom.lightbox_image.src = src || '';
+      }
+    } else if (typeInfo.category === 'video') {
+      if (dom.lightbox_video_wrap && dom.lightbox_video) {
+        dom.lightbox_video_wrap.style.display = 'block';
+        if (file.previewUrl) {
+          dom.lightbox_video.src = file.previewUrl;
+          dom.lightbox_video.play().catch(() => {});
+        }
+      }
+    } else if (typeInfo.category === 'audio') {
+      if (dom.lightbox_audio_wrap && dom.lightbox_audio) {
+        dom.lightbox_audio_wrap.style.display = 'block';
+        if (file.previewUrl) {
+          dom.lightbox_audio.src = file.previewUrl;
+          dom.lightbox_audio.play().catch(() => {});
+        }
+      }
+    } else if (typeInfo.category === 'pdf') {
+      if (dom.lightbox_doc_wrap && dom.lightbox_doc_frame) {
+        dom.lightbox_doc_wrap.style.display = 'block';
+        if (file.previewUrl) {
+          dom.lightbox_doc_frame.src = file.previewUrl;
+        }
+      }
+    } else if (typeInfo.category === 'code' || file.name.endsWith('.txt') || file.name.endsWith('.md')) {
+      if (dom.lightbox_text_wrap && dom.lightbox_text_content) {
+        dom.lightbox_text_wrap.style.display = 'block';
+        try {
+          let text = '';
+          if (file.previewBlob && typeof file.previewBlob.text === 'function') {
+            text = await file.previewBlob.text();
+          } else if (file._file && typeof file._file.text === 'function') {
+            text = await file._file.text();
+          } else if (file.previewUrl && typeof fetch === 'function') {
+            const resp = await fetch(file.previewUrl);
+            text = await resp.text();
+          }
+          dom.lightbox_text_content.textContent = text.slice(0, 100000);
+        } catch {
+          dom.lightbox_text_content.textContent = 'Could not display preview of file content.';
+        }
+      }
+    } else {
+      if (dom.lightbox_generic_wrap) {
+        dom.lightbox_generic_wrap.style.display = 'block';
+        if (dom.lightbox_generic_name) dom.lightbox_generic_name.textContent = file.name;
+        if (dom.lightbox_generic_info) dom.lightbox_generic_info.textContent = `${this._parseBytes(file.size)} · ${typeInfo.label} file`;
+      }
+    }
+
+    if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+      const modal = bootstrap.Modal.getOrCreateInstance(dom.lightbox_modal);
+      modal.show();
+    } else if (dom.lightbox_modal && dom.lightbox_modal.classList) {
+      dom.lightbox_modal.classList.add('show');
+      dom.lightbox_modal.style.display = 'block';
+    }
+  }
+
   _addFileUI(file) {
-    // file.id is validated as a strict id at every entry point; safe to use as a DOM id
-    // suffix. file.name and file.owner_name are user-controlled and inserted via
-    // textContent below — never via innerHTML.
-    dom.transfer_files_list_empty.remove()
-    let li = document.createElement('li')
-    li.setAttribute('id', `file-${file.id}`)
-    li.setAttribute('class', 'file-card list-group-item')
+    if (dom.transfer_files_list_empty) {
+      if (typeof dom.transfer_files_list_empty.remove === 'function') {
+        try { dom.transfer_files_list_empty.remove(); } catch {}
+      } else if (dom.transfer_files_list_empty.style) {
+        dom.transfer_files_list_empty.style.display = 'none';
+      }
+    }
+
+    let card = document.createElement('div');
+    card.setAttribute('id', `file-${file.id}`);
+    card.setAttribute('class', 'file-grid-card file-card');
 
     const isMine = file.owner_id == this._peer.id;
     const typeInfo = getFileTypeInfo(file.name);
-    li.innerHTML = `
-      <div class="file-card-content">
-        <div class="file-card-top">
-          <div class="file-card-info">
-            <div class="file-category-badge" style="background-color: ${typeInfo.color}15; color: ${typeInfo.color}; border: 1px solid ${typeInfo.color}30;">
-              ${typeInfo.label}
-            </div>
-            <div class="file-details-col">
-              <div class="file-name-row">
-                <span class="file-dir-icon" title="${isMine ? 'Sent by you' : 'Incoming file'}">
-                  ${isMine ? '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="display:inline-block"><path fill-rule="evenodd" d="M8 12a.5.5 0 0 0 .5-.5V5.707l2.146 2.147a.5.5 0 0 0 .708-.708l-3-3a.5.5 0 0 0-.708 0l-3 3a.5.5 0 1 0 .708.708L7.5 5.707V11.5a.5.5 0 0 0 .5.5z"/></svg>' : '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="display:inline-block"><path fill-rule="evenodd" d="M8 4a.5.5 0 0 1 .5.5v5.793l2.146-2.147a.5.5 0 0 1 .708.708l-3 3a.5.5 0 0 1-.708 0l-3-3a.5.5 0 1 1 .708-.708L7.5 10.293V4.5A.5.5 0 0 1 8 4z"/></svg>'}
-                </span>
-                <span id="file-${file.id}-name" class="file-name-text"></span>
-              </div>
-              <div class="file-submeta">
-                <span id="file-${file.id}-info"></span>
-                <span id="file-${file.id}-verified" class="checksum-badge" style="display:none" title="Verified with SHA-256 (Click for full digest)">
-                  <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor"><path d="M12.736 3.97a.733.733 0 0 1 1.047 0c.286.289.29.756.01 1.05L7.88 12.01a.733.733 0 0 1-1.065.02L3.217 8.384a.757.757 0 0 1 0-1.06.733.733 0 0 1 1.047 0l3.052 3.093 5.4-6.425z"/></svg>
-                  <span>Verified</span>
-                </span>
-              </div>
-            </div>
-          </div>
 
-          <div class="file-card-actions">
-            <div id="file-${file.id}-icon-loading" title="${isMine ? 'Uploading file': 'Downloading file'}" class="spinner-border text-primary" style="width: 1.3rem; height: 1.3rem; --bs-spinner-border-width: 0.15em; display: none"></div>
+    card.innerHTML = `
+      <!-- Top Visual Preview Area (Click to view in-app) -->
+      <div class="file-grid-preview" id="file-${file.id}-preview-area" title="Click to view file">
+        <div class="file-grid-badge-top">
+          <span class="file-category-badge" style="background-color: ${typeInfo.color}15; color: ${typeInfo.color}; border: 1px solid ${typeInfo.color}30;">
+            ${typeInfo.label}
+          </span>
+        </div>
+        <span id="file-${file.id}-verified" class="file-grid-badge-verified checksum-badge" style="display:none" title="Verified with SHA-256 (Click for full digest)">
+          <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor"><path d="M12.736 3.97a.733.733 0 0 1 1.047 0c.286.289.29.756.01 1.05L7.88 12.01a.733.733 0 0 1-1.065.02L3.217 8.384a.757.757 0 0 1 0-1.06.733.733 0 0 1 1.047 0l3.052 3.093 5.4-6.425z"/></svg>
+          <span>Verified</span>
+        </span>
+
+        <div id="file-${file.id}-preview-container" class="file-grid-preview-inner" style="width:100%;height:100%;"></div>
+      </div>
+
+      <!-- Body Info -->
+      <div class="file-grid-body">
+        <div class="file-grid-header-row d-flex align-items-center justify-content-between gap-1">
+          <h4 id="file-${file.id}-name" class="file-grid-name" title="Click to view file"></h4>
+          <div class="file-status-wrap">
+            <div id="file-${file.id}-icon-loading" title="${isMine ? 'Uploading file': 'Downloading file'}" class="spinner-border text-primary" style="width: 1.1rem; height: 1.1rem; --bs-spinner-border-width: 0.15em; display: none"></div>
             <div id="file-${file.id}-icon-success" title="${isMine ? 'File uploaded': 'File downloaded'}" class="file-status-icon success" style="display: none">
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#10b981" viewBox="0 0 16 16">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="#10b981" viewBox="0 0 16 16">
                 <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zm-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/>
               </svg>
             </div>
             <div id="file-${file.id}-icon-failed" title="Failed" class="file-status-icon failed" style="display: none">
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#ef4444" viewBox="0 0 16 16">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="#ef4444" viewBox="0 0 16 16">
                 <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zM5.354 4.646a.5.5 0 1 0-.708.708L7.293 8l-2.647 2.646a.5.5 0 0 0 .708.708L8 8.707l2.646 2.647a.5.5 0 0 0 .708-.708L8.707 8l2.647-2.646a.5.5 0 0 0-.708-.708L8 7.293 5.354 4.646z"/>
               </svg>
             </div>
-
-            <button id="file-${file.id}-download" class="btn-action-primary" title="Download file" style="display: ${isMine ? 'none' : 'inline-flex'}">
-              <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/><path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/></svg>
-              <span>Download</span>
-            </button>
-            <button id="file-${file.id}-abort" class="btn-action-danger" title="Stop file download" style="display: none">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M5.5 5.5A.5.5 0 0 1 6 6v4a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v4a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v4a.5.5 0 0 0 1 0V6z"/><path d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/></svg>
-            </button>
-            <button id="file-${file.id}-remove" class="btn-action-danger" title="Remove file" style="display: ${isMine ? 'inline-flex' : 'none'}">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M2.146 2.854a.5.5 0 1 1 .708-.708L8 7.293l5.146-5.147a.5.5 0 0 1 .708.708L8.707 8l5.147 5.146a.5.5 0 0 1-.708.708L8 8.707l-5.146 5.147a.5.5 0 0 1-.708-.708L7.293 8 2.146 2.854Z"/></svg>
-            </button>
-            <!-- Advanced Progressive Disclosure Toggle -->
-            <button id="file-${file.id}-toggle-advanced" class="btn-action-ghost" type="button" title="Advanced details & hash" aria-expanded="false">
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                <path d="M9.5 13a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm0-5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm0-5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0z"/>
-              </svg>
-            </button>
           </div>
         </div>
 
-        <!-- MEDIA PREVIEW CONTAINER -->
-        <div id="file-${file.id}-preview-container" class="file-media-preview-container" style="display:none"></div>
+        <div class="file-grid-meta">
+          <span id="file-${file.id}-info"></span>
+          <span class="file-grid-sender-badge">
+            <span class="file-dir-icon" style="margin-right:2px;">
+              ${isMine ? '<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path fill-rule="evenodd" d="M8 12a.5.5 0 0 0 .5-.5V5.707l2.146 2.147a.5.5 0 0 0 .708-.708l-3-3a.5.5 0 0 0-.708 0l-3 3a.5.5 0 1 0 .708.708L7.5 5.707V11.5a.5.5 0 0 0 .5.5z"/></svg>' : '<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path fill-rule="evenodd" d="M8 4a.5.5 0 0 1 .5.5v5.793l2.146-2.147a.5.5 0 0 1 .708.708l-3 3a.5.5 0 0 1-.708 0l-3-3a.5.5 0 1 1 .708-.708L7.5 10.293V4.5A.5.5 0 0 1 8 4z"/></svg>'}
+            </span>
+            ${isMine ? 'You' : (file.owner_name || 'Peer')}
+          </span>
+        </div>
 
-        <div class="file-progress-wrapper">
+        <div class="file-progress-wrapper file-grid-progress-wrap">
           <div class="file-progress-track">
             <div id="file-${file.id}-progress-bar" class="file-progress-fill" style="width: 0%"></div>
           </div>
@@ -2001,7 +2460,6 @@ export class User {
           </div>
         </div>
 
-        <!-- PROGRESSIVE DISCLOSURE ADVANCED DRAWER -->
         <div id="file-${file.id}-advanced" class="file-advanced-drawer" style="display: none;">
           <div class="file-advanced-grid">
             <div class="file-advanced-item">
@@ -2027,15 +2485,49 @@ export class User {
 
         <div id="file-${file.id}-error" class="file-error-banner" style="display:none"></div>
       </div>
-    `
-    dom.transfer_files_list.appendChild(li)
 
-    // Row actions. (Inline handlers are forbidden by the site CSP — bind instead.)
+      <!-- Action buttons -->
+      <div class="file-grid-actions">
+        <div class="d-flex align-items-center gap-1">
+          <button id="file-${file.id}-preview-btn" class="btn-card-action btn-card-preview" type="button" title="View in app">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M10.5 8a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0z"/><path d="M0 8s3-5.5 8-5.5S16 8 16 8s-3 5.5-8 5.5S0 8 0 8zm8 3.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z"/></svg>
+            <span>Preview</span>
+          </button>
+
+          <button id="file-${file.id}-download" class="btn-card-action btn-card-download" title="Save file to disk" style="display: ${isMine ? 'none' : 'inline-flex'}">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/><path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/></svg>
+            <span>Save</span>
+          </button>
+
+          <button id="file-${file.id}-abort" class="btn-card-action btn-action-danger" title="Stop file download" style="display: none">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M5.5 5.5A.5.5 0 0 1 6 6v4a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v4a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v4a.5.5 0 0 0 1 0V6z"/><path d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/></svg>
+            <span>Cancel</span>
+          </button>
+        </div>
+
+        <div class="d-flex align-items-center gap-1">
+          <button id="file-${file.id}-remove" class="btn-card-action btn-card-delete" title="Remove file" style="display: ${isMine ? 'inline-flex' : 'none'}">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M2.146 2.854a.5.5 0 1 1 .708-.708L8 7.293l5.146-5.147a.5.5 0 0 1 .708.708L8.707 8l5.147 5.146a.5.5 0 0 1-.708.708L8 8.707l-5.146 5.147a.5.5 0 0 1-.708-.708L7.293 8 2.146 2.854Z"/></svg>
+          </button>
+          <button id="file-${file.id}-toggle-advanced" class="btn-action-ghost" type="button" title="Advanced details & hash" aria-expanded="false" style="padding: 4px;">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M9.5 13a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm0-5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm0-5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0z"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    `;
+    dom.transfer_files_list.appendChild(card);
+
+    // Row / Card Actions
     const on = (id, fn) => document.getElementById(id)?.addEventListener('click', fn);
     on(`file-${file.id}-details`, () => this.showFileDetails(file.id));
     on(`file-${file.id}-remove`, () => this.removeFile(file.id));
     on(`file-${file.id}-abort`, () => this.abortFile(file.id));
     on(`file-${file.id}-download`, () => this.downloadFile(file.id));
+    on(`file-${file.id}-preview-btn`, () => this.previewOrOpenFile(file.id));
+    on(`file-${file.id}-preview-area`, () => this.previewOrOpenFile(file.id));
+    on(`file-${file.id}-name`, () => this.previewOrOpenFile(file.id));
     on(`file-${file.id}-toggle-advanced`, () => {
       const drawer = document.getElementById(`file-${file.id}-advanced`);
       const btn = document.getElementById(`file-${file.id}-toggle-advanced`);
@@ -2043,7 +2535,7 @@ export class User {
       const isHidden = drawer.style.display === 'none';
       drawer.style.display = isHidden ? 'block' : 'none';
       btn?.setAttribute('aria-expanded', isHidden ? 'true' : 'false');
-      btn?.classList.toggle('active', isHidden);
+      btn?.classList?.toggle('active', isHidden);
     });
     on(`file-${file.id}-hash-copy-btn`, () => {
       const h = document.getElementById(`file-${file.id}-hash-code`)?.textContent;
@@ -2076,7 +2568,7 @@ export class User {
       const verifiedBadge = document.getElementById(`file-${file.id}-verified`);
       if (verifiedBadge) {
         verifiedBadge.style.display = 'inline-flex';
-        verifiedBadge.dataset.hash = file.hash;
+        if (verifiedBadge.dataset) verifiedBadge.dataset.hash = file.hash;
         verifiedBadge.title = `SHA-256: ${file.hash}\nClick to inspect`;
       }
       const hashCode = document.getElementById(`file-${file.id}-hash-code`);
@@ -2085,16 +2577,15 @@ export class User {
       if (copyBtn) copyBtn.style.display = 'inline-flex';
     }
 
-    // Insert user-controlled text safely (textContent never parses HTML).
     const nameEl = document.getElementById(`file-${file.id}-name`);
     if (nameEl) nameEl.textContent = file.name;
     this._setFileInfoText(file);
 
-    // Update the number of files in the list (count is server-derived, but use
-    // textContent for consistency).
-    dom.transfer_files_count.textContent = ` (${dom.transfer_files_list.querySelectorAll('li').length})`;
+    const count = dom.transfer_files_list.querySelectorAll
+      ? dom.transfer_files_list.querySelectorAll('.file-grid-card, .file-card, li').length
+      : Object.keys(this._files).length;
+    if (dom.transfer_files_count) dom.transfer_files_count.textContent = ` (${count})`;
 
-    // Render media preview if thumbnail or previewUrl is available
     this._renderFilePreview(file);
   }
 
@@ -2103,59 +2594,57 @@ export class User {
     if (!container) return;
 
     const typeInfo = getFileTypeInfo(file.name);
-    const isImage = typeInfo.category === 'image';
-    const isVideo = typeInfo.category === 'video';
-
+    const hasThumb = !!(file.previewUrl || file.thumbnail);
     container.innerHTML = '';
 
-    if (isImage) {
+    if (hasThumb) {
       const src = file.previewUrl || file.thumbnail;
-      if (src) {
-        container.style.display = 'block';
-        const wrap = document.createElement('div');
-        wrap.className = 'file-thumbnail-wrap';
-        wrap.id = `file-${file.id}-thumb-wrap`;
-        wrap.title = 'Click to view full image in Lightbox';
+      const img = document.createElement('img');
+      img.className = 'file-grid-thumb';
+      img.src = src;
+      img.alt = file.name;
+      img.loading = 'lazy';
+      container.appendChild(img);
 
-        const img = document.createElement('img');
-        img.className = 'file-thumbnail-img';
-        img.src = src;
-        img.alt = file.name;
-
-        const overlay = document.createElement('div');
-        overlay.className = 'file-thumbnail-overlay';
-        overlay.innerHTML = `
-          <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor"><path d="M10.5 8a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0z"/><path d="M0 8s3-5.5 8-5.5S16 8 16 8s-3 5.5-8 5.5S0 8 0 8zm8 3.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z"/></svg>
-          <span>Preview</span>
-        `;
-
-        wrap.appendChild(img);
-        wrap.appendChild(overlay);
-        wrap.addEventListener('click', () => {
-          this._openLightbox(src, file.name);
-        });
-        container.appendChild(wrap);
+      if (typeInfo.category === 'video') {
+        const playOverlay = document.createElement('div');
+        playOverlay.className = 'file-grid-play-overlay';
+        playOverlay.innerHTML = `<svg width="22" height="22" viewBox="0 0 16 16" fill="currentColor"><path d="m11.596 8.697-6.363 3.692c-.54.313-1.233-.066-1.233-.697V4.308c0-.63.692-1.01 1.233-.696l6.363 3.692a.802.802 0 0 1 0 1.393z"/></svg>`;
+        container.appendChild(playOverlay);
       }
-    } else if (isVideo) {
-      if (file.previewUrl) {
-        container.style.display = 'block';
-        const wrap = document.createElement('div');
-        wrap.className = 'file-video-wrap';
-        const video = document.createElement('video');
-        video.className = 'file-video-player';
-        video.controls = true;
-        video.playsInline = true;
-        video.preload = 'metadata';
-        video.src = file.previewUrl;
-        wrap.appendChild(video);
-        container.appendChild(wrap);
+    } else {
+      const tile = document.createElement('div');
+      tile.className = 'file-grid-doc-tile';
+      let iconSvg = '';
+      if (typeInfo.category === 'audio') {
+        iconSvg = `<svg width="24" height="24" viewBox="0 0 16 16" fill="currentColor"><path d="M6 13c0 1.105-1.12 2-2.5 2S1 14.105 1 13s1.12-2 2.5-2 2.5.895 2.5 2zm9-2c0 1.105-1.12 2-2.5 2s-2.5-.895-2.5-2 1.12-2 2.5-2 2.5.895 2.5 2z"/><path fill-rule="evenodd" d="M14 11V2h1v9h-1zM6 3v10H5V3h1z"/><path d="M5 2.905a1 1 0 0 1 .9-.995l8-.8a1 1 0 0 1 1.1.995V3L5 4V2.905z"/></svg>`;
+      } else if (typeInfo.category === 'pdf') {
+        iconSvg = `<svg width="24" height="24" viewBox="0 0 16 16" fill="currentColor"><path d="M14 14V4.5L9.5 0H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2zM9.5 3A1.5 1.5 0 0 0 11 4.5h2V14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h5.5v2z"/></svg>`;
+      } else if (typeInfo.category === 'code') {
+        iconSvg = `<svg width="24" height="24" viewBox="0 0 16 16" fill="currentColor"><path d="M10.478 1.647a.5.5 0 1 0-.956-.294l-4 13a.5.5 0 0 0 .956.294l4-13zM4.854 4.146a.5.5 0 0 1 0 .708L1.707 8l3.147 3.146a.5.5 0 0 1-.708.708l-3.5-3.5a.5.5 0 0 1 0-.708l3.5-3.5a.5.5 0 0 1 .708 0zm6.292 0a.5.5 0 0 0 0 .708L14.293 8l-3.147 3.146a.5.5 0 0 0 .708.708l3.5-3.5a.5.5 0 0 0 0-.708l-3.5-3.5a.5.5 0 0 0-.708 0z"/></svg>`;
+      } else if (typeInfo.category === 'archive') {
+        iconSvg = `<svg width="24" height="24" viewBox="0 0 16 16" fill="currentColor"><path d="M2.5 1A1.5 1.5 0 0 0 1 2.5v11A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-11A1.5 1.5 0 0 0 13.5 1h-11zm5 2h1v1h-1V3zm0 2h1v1h-1V5zm0 2h1v1h-1V7zm0 2h1v1h-1V9zm0 2h1v2h-1v-2z"/></svg>`;
+      } else {
+        iconSvg = `<svg width="24" height="24" viewBox="0 0 16 16" fill="currentColor"><path d="M14 4.5V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2h5.5zm-3 0A1.5 1.5 0 0 1 9.5 3V1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V4.5z"/></svg>`;
       }
+
+      tile.innerHTML = `
+        <div class="file-grid-doc-icon" style="background: ${typeInfo.color}18; color: ${typeInfo.color}; border: 1px solid ${typeInfo.color}35;">
+          ${iconSvg}
+        </div>
+        <span style="font-size: 0.75rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase;">.${typeInfo.ext || 'FILE'}</span>
+      `;
+      container.appendChild(tile);
     }
   }
 
   _openLightbox(imgSrc, fileName) {
     if (!dom.lightbox_modal) return;
-    if (dom.lightbox_image) dom.lightbox_image.src = imgSrc;
+    this._resetUniversalViewer();
+    if (dom.lightbox_image_wrap && dom.lightbox_image) {
+      dom.lightbox_image_wrap.style.display = 'flex';
+      dom.lightbox_image.src = imgSrc;
+    }
     if (dom.lightbox_caption) dom.lightbox_caption.textContent = fileName;
     if (dom.lightbox_download) {
       dom.lightbox_download.href = imgSrc;
@@ -2164,7 +2653,7 @@ export class User {
     if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
       const modal = bootstrap.Modal.getOrCreateInstance(dom.lightbox_modal);
       modal.show();
-    } else {
+    } else if (dom.lightbox_modal && dom.lightbox_modal.classList) {
       dom.lightbox_modal.classList.add('show');
       dom.lightbox_modal.style.display = 'block';
     }

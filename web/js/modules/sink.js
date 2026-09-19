@@ -319,6 +319,63 @@ function openBlobSink({ name, mime }) {
   };
 }
 
+export function openMemoryBlobSink({ name, mime }) {
+  const blobParts = [];
+  const currentBatch = [];
+  let currentBatchSize = 0;
+  const BATCH_SIZE = 8 * 1024 * 1024; // 8 MB
+  let resultBlob = null;
+
+  return {
+    mode: 'blob',
+    getBlob() { return resultBlob; },
+    async write(chunk) {
+      currentBatch.push(chunk);
+      currentBatchSize += chunk.byteLength;
+      if (currentBatchSize >= BATCH_SIZE) {
+        blobParts.push(new Blob(currentBatch));
+        currentBatch.length = 0;
+        currentBatchSize = 0;
+      }
+    },
+    async truncate0() {
+      blobParts.length = 0;
+      currentBatch.length = 0;
+      currentBatchSize = 0;
+      resultBlob = null;
+    },
+    async close() {
+      if (currentBatch.length > 0) {
+        blobParts.push(new Blob(currentBatch));
+        currentBatch.length = 0;
+      }
+      resultBlob = new Blob(blobParts, mime ? { type: mime } : undefined);
+      blobParts.length = 0;
+      return resultBlob;
+    },
+    async abort() {
+      blobParts.length = 0;
+      currentBatch.length = 0;
+      currentBatchSize = 0;
+      resultBlob = null;
+    },
+  };
+}
+
+export function saveBlobToDisk(blob, fileName) {
+  if (!blob) return;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName || 'download';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+    a.remove();
+    URL.revokeObjectURL(url);
+  }, 2000);
+}
+
 // ---- Selection --------------------------------------------------------------------
 
 export async function openSink({ id, name, size, mime }) {
