@@ -6,9 +6,9 @@ import time
 import hmac
 import jwt
 from datetime import datetime, timezone
-from typing import Optional, List, Dict, Any
+from typing import Optional, Dict, Any
 from fastapi import APIRouter, Header, HTTPException, Query, status, Depends
-from fastapi.responses import Response, JSONResponse
+from fastapi.responses import Response
 from pydantic import BaseModel
 
 from api.signaling import _REGISTRY

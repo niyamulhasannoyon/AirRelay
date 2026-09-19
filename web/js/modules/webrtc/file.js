@@ -6,10 +6,10 @@ import { inspectPeerConnection, renderTelemetryBadge } from '../telemetry.js';
 import { acquireWakeLock, releaseWakeLock } from '../wakelock.js';
 import { soundTransferComplete, soundError } from '../sound.js';
 
-const CHUNK_SIZE = 16 * 1024;          // 16 KiB — under SCTP message-size limits on every browser.
-const HIGH_WATER = 256 * 1024;         // 256 KiB — pipeline up to 256 KB in flight for high throughput.
-const LOW_WATER  = 64 * 1024;          // 64 KiB — resume when it drains to 64 KB.
-const PROGRESS_REPORT_INTERVAL = 512 * 1024;  // Send a progress update every 512 KiB received.
+export const CHUNK_SIZE = 64 * 1024;          // 64 KiB — optimal chunk size for WebRTC SCTP data channels.
+export const HIGH_WATER = 1024 * 1024;        // 1 MiB — tight backpressure cap prevents bufferbloat.
+export const LOW_WATER  = 256 * 1024;         // 256 KiB — smooth low-water threshold prevents starvation.
+export const PROGRESS_REPORT_INTERVAL = 256 * 1024;  // 256 KiB — responsive real-time progress updates.
 // Aligned with ICE's own recovery window: browsers keep retrying a 'disconnected'
 // session for ~30s before declaring 'failed', so give up no earlier than they do.
 const ICE_DISCONNECT_GRACE_MS = 30_000;
@@ -94,6 +94,9 @@ export class File {
   _hash = null;
   _senderHash = null;
   _telemetryPollTimer = null;
+  _previewUrl = null;
+  _previewBlob = null;
+  _onPreviewReady = null;
 
   _recordProgress(currentBytes) {
     const now = Date.now();
@@ -138,10 +141,13 @@ export class File {
     this._content = file.content
     this._owner_id = file.owner_id
     this._owner_name = file.owner_name
+    this._thumbnail = file.thumbnail || null
   }
 
   get file() {
-    return {"id": this._id, "name": this._name, "size": this._size, "owner_id": this._owner_id, "owner_name": this._owner_name}
+    const f = {"id": this._id, "name": this._name, "size": this._size, "owner_id": this._owner_id, "owner_name": this._owner_name};
+    if (this._thumbnail) f.thumbnail = this._thumbnail;
+    return f;
   }
 
   get id() { return this._id; }
@@ -149,6 +155,8 @@ export class File {
   get size() { return this._size }
   get owner_id() { return this._owner_id }
   get owner_name() { return this._owner_name }
+  get thumbnail() { return this._thumbnail }
+  set thumbnail(value) { this._thumbnail = value }
   get peer() { return this._peer }
   get conn() { return this._conn }
   get remotePeers() { return this._remotePeers }
@@ -178,6 +186,11 @@ export class File {
   setZipController(c) { this._zipController = c }
   get hash() { return this._hash; }
   set hash(value) { this._hash = value; }
+  get previewUrl() { return this._previewUrl; }
+  set previewUrl(value) { this._previewUrl = value; }
+  get previewBlob() { return this._previewBlob; }
+  set previewBlob(value) { this._previewBlob = value; }
+  onPreviewReady(cb) { this._onPreviewReady = cb; }
 
   async init(peer_id) {
     // Get ICE servers. Caller is responsible for surfacing this — file.init is used
@@ -848,12 +861,10 @@ export class File {
       } else if (this._sink) {
         const sink = this._sink;
         const size = bytes.byteLength;
-        await this._writeChain;
-        this._writeChain = (async () => {
+        this._writeChain = this._writeChain.then(async () => {
           await sink.write(bytes);
           this._flushed += size;
-        })();
-        await this._writeChain;
+        });
       }
     } catch (err) {
       console.error('Sink write failed:', err);
@@ -928,7 +939,17 @@ export class File {
       }
     } else if (this._sink) {
       // Drain queued writes before closing so no chunk is lost.
-      try { await this._writeChain; await this._sink.close(); }
+      try {
+        await this._writeChain;
+        const sinkResult = await this._sink.close();
+        if (sinkResult instanceof Blob) {
+          this._previewBlob = sinkResult;
+          this._previewUrl = URL.createObjectURL(sinkResult);
+          if (this._onPreviewReady) {
+            this._onPreviewReady(this._previewUrl, sinkResult);
+          }
+        }
+      }
       catch (err) {
         console.error('Sink close failed:', err);
         this._terminateReceive(conn, 'sink-close-failed', 'Could not save the download.');

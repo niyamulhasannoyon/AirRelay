@@ -217,14 +217,27 @@
         </div>
       </section>
 
-      <!-- CONNECTING TO ROOM -->
-      <section id="connect-div" class="glass-panel p-4 mb-4 text-center" style="display: none;">
-        <div class="spinner-border text-primary" style="width: 2.2rem; height: 2.2rem; border-width: 0.18em; margin-bottom: 14px;" role="status"></div>
-        <p id="connect-status-title" style="color: var(--text-primary); font-size: 1.05rem; font-weight: 600; margin: 0;">Connecting to room...</p>
-        <p id="connect-status-desc" style="color: var(--text-muted); font-size: 0.85rem; margin: 4px 0 16px;">Establishing secure peer-to-peer session</p>
-        <div>
-          <button id="connect-cancel-btn" class="btn-glass" type="button" style="font-size: 0.82rem; padding: 6px 18px;">
+      <!-- CONNECTING TO ROOM / APPROVAL STATE -->
+      <section id="connect-div" class="glass-panel p-4 mb-4 text-center" style="display: none; max-width: 520px; margin-left: auto; margin-right: auto;">
+        <div id="connect-spinner" class="spinner-border text-primary" style="width: 2.4rem; height: 2.4rem; border-width: 0.18em; margin-bottom: 14px;" role="status"></div>
+        <div id="connect-status-icon-declined" style="display: none; margin-bottom: 14px;">
+          <div style="width: 48px; height: 48px; border-radius: 50%; background: var(--status-danger-bg); color: var(--status-danger); display: inline-flex; align-items: center; justify-content: center;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 16 16">
+              <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zM5.354 4.646a.5.5 0 1 0-.708.708L7.293 8l-2.647 2.646a.5.5 0 0 0 .708.708L8 8.707l2.646 2.647a.5.5 0 0 0 .708-.708L8.707 8l2.647-2.646a.5.5 0 0 0-.708-.708L8 7.293 5.354 4.646z"/>
+            </svg>
+          </div>
+        </div>
+        <div id="connect-status-badge-wrap" class="mb-2" style="display: none;">
+          <span id="connect-status-badge" class="badge" style="font-size: 0.78rem; font-weight: 600; padding: 4px 10px; border-radius: var(--radius-full);"></span>
+        </div>
+        <p id="connect-status-title" style="color: var(--text-primary); font-size: 1.12rem; font-weight: 700; margin: 0;">Connecting to room...</p>
+        <p id="connect-status-desc" style="color: var(--text-muted); font-size: 0.88rem; margin: 6px 0 18px; line-height: 1.5;">Establishing secure peer-to-peer session</p>
+        <div class="d-flex justify-content-center gap-2">
+          <button id="connect-cancel-btn" class="btn-glass" type="button" style="font-size: 0.84rem; padding: 6px 18px;">
             <span>Cancel</span>
+          </button>
+          <button id="connect-retry-btn" class="btn-primary-pill btn-sm" type="button" style="display: none; padding: 6px 20px;">
+            <span>Retry Connection</span>
           </button>
         </div>
       </section>
@@ -947,6 +960,60 @@
           </div>
           <div class="modal-footer border-0 p-0 d-flex justify-content-end">
             <button type="button" class="btn-primary-pill" style="padding: 6px 18px; font-size: 0.88rem;" data-bs-dismiss="modal">Done</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CONNECTION APPROVAL REQUEST MODAL (HOST PROMPT) -->
+    <div id="approval-modal" class="modal fade" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false" aria-labelledby="approval-title" aria-modal="true" role="dialog">
+      <div class="modal-dialog modal-dialog-centered" style="max-width: 420px;">
+        <div class="modal-content glass-modal text-center p-4">
+          <div class="mb-3">
+            <div class="approval-avatar-wrap mb-2">
+              <span id="approval-peer-avatar" style="display: inline-flex; width: 44px; height: 44px; align-items: center; justify-content: center; border-radius: 50%; box-shadow: var(--shadow-sm);"></span>
+            </div>
+            <h5 id="approval-title" style="margin: 0; font-size: 1.22rem; font-weight: 700; color: var(--text-primary);">Connection Request</h5>
+            <p style="font-size: 0.84rem; color: var(--text-secondary); margin: 4px 0 0;">A peer wants to join your AirRelay room</p>
+          </div>
+          <div class="glass-panel p-3 mb-4" style="background: var(--glass-bg-subtle); border-radius: var(--radius-md);">
+            <div class="d-flex align-items-center justify-content-center gap-2 mb-1">
+              <span id="approval-peer-os" class="d-inline-flex align-items-center"></span>
+              <strong id="approval-peer-name" style="font-size: 1.05rem; color: var(--text-primary);"></strong>
+            </div>
+            <p id="approval-peer-details" style="font-size: 0.82rem; color: var(--text-muted); margin: 0;">Direct encrypted WebRTC handshake</p>
+          </div>
+          <div class="d-flex gap-2 justify-content-center">
+            <button id="approval-reject-btn" type="button" class="btn btn-outline-danger" style="border-radius: var(--radius-full); padding: 8px 24px; font-weight: 600; font-size: 0.9rem;">
+              Reject
+            </button>
+            <button id="approval-accept-btn" type="button" class="btn-primary-pill" style="padding: 8px 28px; font-size: 0.9rem;">
+              Accept &amp; Connect
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MEDIA LIGHTBOX MODAL -->
+    <div id="lightbox-modal" class="modal fade" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered modal-xl" style="max-width: 92vw;">
+        <div class="modal-content glass-modal text-center p-3 position-relative" style="background: rgba(8, 11, 17, 0.96); border: 1px solid var(--glass-border); box-shadow: var(--shadow-lg);">
+          <div class="d-flex justify-content-between align-items-center mb-2 px-2">
+            <div class="d-flex align-items-center gap-2 overflow-hidden">
+              <span class="file-category-badge" style="background-color: #38bdf815; color: #38bdf8; border: 1px solid #38bdf830; font-size: 0.72rem; padding: 2px 8px; border-radius: var(--radius-full); flex-shrink: 0;">IMG</span>
+              <span id="lightbox-caption" class="text-truncate text-start" style="font-size: 0.9rem; font-weight: 600; color: var(--text-primary);"></span>
+            </div>
+            <div class="d-flex align-items-center gap-2 flex-shrink-0">
+              <a id="lightbox-download" class="btn-glass btn-sm" download title="Download Image" style="font-size: 0.8rem; padding: 4px 12px; text-decoration: none;">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/><path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/></svg>
+                <span>Save</span>
+              </a>
+              <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+          </div>
+          <div class="lightbox-img-holder p-1" style="max-height: 80vh; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+            <img id="lightbox-image" src="" alt="Full Preview" class="img-fluid rounded" style="max-height: 78vh; width: auto; max-width: 100%; object-fit: contain; box-shadow: var(--shadow-lg);">
           </div>
         </div>
       </div>

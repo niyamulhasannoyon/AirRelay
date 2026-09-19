@@ -4,11 +4,17 @@ import { registerServiceWorker, installSinkBadge, sinkState, activeMode } from '
 import { installIceModeBadge } from './webrtc/mode.js';
 import { isSoundEnabled, toggleSound } from './sound.js';
 
-// Room ID
-const room_id = window.location.pathname.substring(1)
+// Room ID and deep-link query parameter resolution
+const urlParams = new URLSearchParams(window.location.search);
+const rawPath = window.location.pathname.replace(/^\/+|\/+$/g, '');
+const room_id = rawPath || urlParams.get('room') || urlParams.get('join') || urlParams.get('code') || '';
 
 // Store current user
 var user;
+
+// State tracking for host approval and guest reconnect
+var activeApprovalPeerId = null;
+var activeTargetPeerId = null;
 
 // QR Code instance for hidden canvas
 var qr = new QRious({
@@ -50,11 +56,20 @@ function getInlineRoomQr() {
 }
 
 function updateQRCodes(url) {
-  qr.set({ value: url });
+  let qrUrl = url;
+  try {
+    const parsed = new URL(url, window.location.origin);
+    if (!parsed.searchParams.has('auto')) {
+      parsed.searchParams.set('auto', '1');
+    }
+    qrUrl = parsed.toString();
+  } catch {}
+
+  qr.set({ value: qrUrl });
   const mq = getModalQr();
-  if (mq) mq.set({ value: url });
+  if (mq) mq.set({ value: qrUrl });
   const irq = getInlineRoomQr();
-  if (irq) irq.set({ value: url });
+  if (irq) irq.set({ value: qrUrl });
 }
 
 // Get theme mode
@@ -107,7 +122,59 @@ async function onLoad() {
   maybeShowInsecureContextWarning();
 
   // Create current user
-  user = new User(room_id)
+  user = new User(room_id);
+
+  // Host approval request handling
+  user.onApprovalRequest((peer) => {
+    activeApprovalPeerId = peer.id;
+    if (dom.approval_peer_name) dom.approval_peer_name.textContent = peer.name;
+    if (dom.approval_peer_avatar) dom.approval_peer_avatar.innerHTML = getIdenticonSVG(peer.name, 38);
+    if (dom.approval_peer_os) dom.approval_peer_os.innerHTML = getOSIconSVG(peer.os, 18);
+    if (dom.approval_modal) {
+      if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+        bootstrap.Modal.getOrCreateInstance(dom.approval_modal).show();
+      } else {
+        dom.approval_modal.classList.add('show');
+        dom.approval_modal.style.display = 'block';
+      }
+    }
+  });
+
+  user.onApprovalCancelled((peerId) => {
+    if (activeApprovalPeerId === peerId) {
+      activeApprovalPeerId = null;
+      if (dom.approval_modal) {
+        if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+          bootstrap.Modal.getInstance(dom.approval_modal)?.hide();
+        } else {
+          dom.approval_modal.classList.remove('show');
+          dom.approval_modal.style.display = 'none';
+        }
+      }
+      showToast('Peer cancelled the connection request.', 'warning');
+    }
+  });
+
+  // Connecting peer status updates
+  user.onConnectionStatus((status, reason) => {
+    if (status === 'pending_approval') {
+      dom.connect_div.style.display = 'block';
+      updateConnectStatus('Pending Approval', 'Waiting for host to accept your connection request...', {
+        badge: 'Awaiting Host Approval',
+        badgeClass: 'bg-warning text-dark',
+        icon: 'spinner',
+        retry: false
+      });
+    } else if (status === 'rejected') {
+      dom.connect_div.style.display = 'block';
+      updateConnectStatus('Connection Declined', reason || 'The host declined your connection request.', {
+        badge: 'Declined',
+        badgeClass: 'bg-danger text-white',
+        icon: 'declined',
+        retry: true
+      });
+    }
+  });
 
   // Host
   if (room_id.length == 0) {
@@ -177,6 +244,7 @@ async function onLoad() {
       console.warn('Room resolution via API failed:', err);
     }
 
+    activeTargetPeerId = targetPeerId;
     dom.transfer_url_value.textContent = `${window.location.origin}/${targetPeerId}`;
     updateQRCodes(dom.transfer_url_value.textContent);
 
@@ -197,9 +265,11 @@ async function onLoad() {
       await user.connect(targetPeerId);
     } catch (err) {
       console.warn('Failed to join room:', err);
-      dom.connect_div.style.display = 'none';
-      dom.error_div.style.display = 'block';
-      dom.error_message.innerHTML = 'Could not reach the host. The room may no longer be active.';
+      if (user._status?.status !== 'rejected') {
+        dom.connect_div.style.display = 'none';
+        dom.error_div.style.display = 'block';
+        dom.error_message.innerHTML = 'Could not reach the host. The room may no longer be active.';
+      }
     }
   }
 }
@@ -350,9 +420,31 @@ function copyURL() {
 }
 
 // Dynamic status for connecting div
-function updateConnectStatus(title, desc) {
+function updateConnectStatus(title, desc, { badge = null, badgeClass = 'bg-primary text-white', icon = 'spinner', retry = false } = {}) {
   if (dom.connect_status_title) dom.connect_status_title.textContent = title;
   if (dom.connect_status_desc) dom.connect_status_desc.textContent = desc;
+
+  if (dom.connect_status_badge_wrap && dom.connect_status_badge) {
+    if (badge) {
+      dom.connect_status_badge_wrap.style.display = 'block';
+      dom.connect_status_badge.textContent = badge;
+      dom.connect_status_badge.className = `badge ${badgeClass}`;
+    } else {
+      dom.connect_status_badge_wrap.style.display = 'none';
+    }
+  }
+
+  if (icon === 'spinner') {
+    if (dom.connect_spinner) dom.connect_spinner.style.display = 'inline-block';
+    if (dom.connect_status_icon_declined) dom.connect_status_icon_declined.style.display = 'none';
+  } else if (icon === 'declined') {
+    if (dom.connect_spinner) dom.connect_spinner.style.display = 'none';
+    if (dom.connect_status_icon_declined) dom.connect_status_icon_declined.style.display = 'block';
+  }
+
+  if (dom.connect_retry_btn) {
+    dom.connect_retry_btn.style.display = retry ? 'inline-flex' : 'none';
+  }
 }
 
 // Copy Quick 6-Digit Room Code
@@ -1065,6 +1157,59 @@ function bindUI() {
   on('room-code-copy-btn', 'click', (e) => { e.stopPropagation(); copyRoomCode(); });
   on('nearby-banner-dismiss', 'click', () => { if (dom.nearby_banner) dom.nearby_banner.style.display = 'none'; });
   on('connect-cancel-btn', 'click', () => { window.location.href = '/'; });
+  on('connect-retry-btn', 'click', async () => {
+    if (!activeTargetPeerId) return;
+    updateConnectStatus('Reconnecting...', 'Attempting to reconnect to host...', {
+      badge: 'Retrying',
+      badgeClass: 'bg-primary text-white',
+      icon: 'spinner',
+      retry: false
+    });
+    try {
+      await user.connect(activeTargetPeerId);
+    } catch (err) {
+      console.warn('Retry failed:', err);
+      if (user?._status?.status !== 'rejected') {
+        updateConnectStatus('Connection Failed', 'Could not reach the host. Please try again.', {
+          badge: 'Failed',
+          badgeClass: 'bg-danger text-white',
+          icon: 'declined',
+          retry: true
+        });
+      }
+    }
+  });
+
+  // Host approval action buttons
+  on('approval-accept-btn', 'click', () => {
+    if (!activeApprovalPeerId) return;
+    const pid = activeApprovalPeerId;
+    activeApprovalPeerId = null;
+    if (dom.approval_modal) {
+      if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+        bootstrap.Modal.getInstance(dom.approval_modal)?.hide();
+      } else {
+        dom.approval_modal.classList.remove('show');
+        dom.approval_modal.style.display = 'none';
+      }
+    }
+    user?.approvePeer(pid);
+  });
+
+  on('approval-reject-btn', 'click', () => {
+    if (!activeApprovalPeerId) return;
+    const pid = activeApprovalPeerId;
+    activeApprovalPeerId = null;
+    if (dom.approval_modal) {
+      if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+        bootstrap.Modal.getInstance(dom.approval_modal)?.hide();
+      } else {
+        dom.approval_modal.classList.remove('show');
+        dom.approval_modal.style.display = 'none';
+      }
+    }
+    user?.rejectPeer(pid, 'Connection request was declined by the host.');
+  });
   on('transfer-share-btn', 'click', shareRoom);
   on('transfer-qr-btn', 'click', openQRModal);
   on('transfer-qr-code', 'click', openQRModal);

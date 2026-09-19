@@ -124,30 +124,48 @@ export function getOSIconSVG(os, size = 16) {
   }
 }
 
+export async function generateImageThumbnail(fileBlob, maxDim = 160) {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return null;
+  try {
+    if (typeof createImageBitmap === 'function') {
+      const bitmap = await createImageBitmap(fileBlob);
+      const scale = Math.min(maxDim / bitmap.width, maxDim / bitmap.height, 1);
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      bitmap.close?.();
+      return canvas.toDataURL('image/jpeg', 0.72);
+    }
+  } catch {}
+  return null;
+}
+
 export function getFileTypeInfo(filename) {
   const ext = (filename || '').split('.').pop().toLowerCase();
   if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico', 'avif'].includes(ext)) {
-    return { type: 'image', color: '#38bdf8', label: 'IMG' };
+    return { type: 'image', color: '#38bdf8', label: 'IMG', ext };
   }
   if (['mp4', 'mov', 'avi', 'mkv', 'webm', 'm4v'].includes(ext)) {
-    return { type: 'video', color: '#a855f7', label: 'VID' };
+    return { type: 'video', color: '#a855f7', label: 'VID', ext };
   }
   if (['mp3', 'wav', 'flac', 'aac', 'ogg', 'm4a'].includes(ext)) {
-    return { type: 'audio', color: '#ec4899', label: 'AUD' };
+    return { type: 'audio', color: '#ec4899', label: 'AUD', ext };
   }
   if (['pdf'].includes(ext)) {
-    return { type: 'pdf', color: '#f43f5e', label: 'PDF' };
+    return { type: 'pdf', color: '#f43f5e', label: 'PDF', ext };
   }
   if (['zip', 'tar', 'gz', 'rar', '7z', 'bz2'].includes(ext)) {
-    return { type: 'archive', color: '#eab308', label: 'ZIP' };
+    return { type: 'archive', color: '#eab308', label: 'ZIP', ext };
   }
   if (['js', 'ts', 'py', 'html', 'css', 'json', 'cpp', 'c', 'go', 'rs', 'java', 'sql', 'sh', 'md'].includes(ext)) {
-    return { type: 'code', color: '#10b981', label: 'CODE' };
+    return { type: 'code', color: '#10b981', label: 'CODE', ext };
   }
   if (['doc', 'docx', 'txt', 'rtf', 'odt', 'pages', 'xlsx', 'xls', 'csv', 'pptx', 'ppt'].includes(ext)) {
-    return { type: 'doc', color: '#3b82f6', label: 'DOC' };
+    return { type: 'doc', color: '#3b82f6', label: 'DOC', ext };
   }
-  return { type: 'file', color: '#94a3b8', label: 'FILE' };
+  return { type: 'file', color: '#94a3b8', label: 'FILE', ext };
 }
 
 export class User {
@@ -156,6 +174,10 @@ export class User {
   _os = detectOS();
   _peer = null;
   _remotePeers = _makeWireMap();
+  _pendingApprovals = _makeWireMap();
+  _onApprovalRequestCallback = null;
+  _onApprovalCancelledCallback = null;
+  _onConnectionStatusCallback = null;
   _room_id;
   _code = '';
   _isHost;
@@ -216,6 +238,88 @@ export class User {
     const hashArray = Array.from(new Uint8Array(hashBuffer));
     const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
     return hashHex;
+  }
+
+  onApprovalRequest(fn) {
+    this._onApprovalRequestCallback = fn;
+  }
+
+  onApprovalCancelled(fn) {
+    this._onApprovalCancelledCallback = fn;
+  }
+
+  onConnectionStatus(fn) {
+    this._onConnectionStatusCallback = fn;
+  }
+
+  approvePeer(peerId) {
+    const pending = this._pendingApprovals[peerId];
+    if (!pending) return false;
+    delete this._pendingApprovals[peerId];
+    const { conn, cleanName, peerOs } = pending;
+
+    const prev = this._remotePeers[conn.peer];
+    if (prev?.interval) clearInterval(prev.interval);
+
+    this._remotePeers[conn.peer] = {
+      name: cleanName,
+      os: peerOs,
+      conn: conn,
+      interval: setInterval(() => this._isAlive(conn.peer), 1000)
+    };
+    this._watchIce(conn, this._remotePeers[conn.peer]);
+
+    dom.transfer_status_wait.style.display = 'none';
+    dom.transfer_status_success.style.display = 'inline-block';
+
+    const peers_list = [
+      { id: this._peer.id, name: this._name, os: this._os },
+      ...Object.entries(this._remotePeers).map(([k, v]) => ({ id: k, name: v.name, os: v.os || 'generic' }))
+    ];
+
+    this._addUserUI({ id: conn.peer, name: cleanName, os: peerOs });
+
+    if (conn.peerConnection) {
+      inspectPeerConnection(conn.peerConnection).then((tel) => {
+        if (tel) {
+          const telEl = document.getElementById(`user-${conn.peer}-telemetry`);
+          if (telEl) telEl.innerHTML = renderTelemetryBadge(tel);
+        }
+      }).catch(() => {});
+    }
+
+    conn.send({
+      'webrtc-connect-response': {
+        status: 'welcome',
+        secured: this._password.trim().length != 0
+      }
+    });
+
+    for (let p of Object.values(this._remotePeers)) {
+      p.conn.send({
+        'webrtc-peers': peers_list,
+        'webrtc-files': Object.values(this._files).filter(x => !x.aborted && !x.removed).map(x => x.file)
+      });
+    }
+
+    showToast(`Peer "${cleanName}" connected.`);
+    return true;
+  }
+
+  rejectPeer(peerId, reason = 'Connection request was declined by the host.') {
+    const pending = this._pendingApprovals[peerId];
+    if (!pending) return false;
+    delete this._pendingApprovals[peerId];
+    try {
+      pending.conn.send({
+        'webrtc-connect-response': {
+          status: 'rejected',
+          reason
+        }
+      });
+    } catch {}
+    try { pending.conn.close(); } catch {}
+    return true;
   }
 
   async init(peer_id = null, code = null) {
@@ -481,6 +585,25 @@ export class User {
         continue
       }
 
+      // Check for preview and thumbnail capabilities
+      const typeInfo = getFileTypeInfo(name);
+      let thumbnailData = null;
+      let previewUrl = null;
+
+      if (typeof window !== 'undefined' && window.URL && window.URL.createObjectURL) {
+        try {
+          previewUrl = URL.createObjectURL(file);
+        } catch {}
+      }
+
+      if (typeInfo.category === 'image' && typeof window !== 'undefined') {
+        try {
+          thumbnailData = await generateImageThumbnail(file, 160);
+        } catch (e) {
+          console.warn('Failed to generate thumbnail for', name, e);
+        }
+      }
+
       // Parse file
       const fileData = {
         "id": await this._getUUID(),
@@ -489,10 +612,12 @@ export class User {
         "content": file,
         "owner_id": this._peer.id,
         "owner_name": this._name,
+        "thumbnail": thumbnailData,
       };
 
       // Create file instance
       const f = new File(fileData);
+      if (previewUrl) f.previewUrl = previewUrl;
 
       // Add file to the current user
       this._files[f.id] = f
@@ -518,7 +643,9 @@ export class User {
       }
 
       // Store file to be send to other peers
-      data.push({"id": f.id, "name": f.name, "size": f.size, "owner_id": f.owner_id, "owner_name": f.owner_name})
+      const wireEntry = {"id": f.id, "name": f.name, "size": f.size, "owner_id": f.owner_id, "owner_name": f.owner_name};
+      if (thumbnailData) wireEntry.thumbnail = thumbnailData;
+      data.push(wireEntry);
     }
 
     // Play acoustic feedback and show toast for added files
@@ -641,6 +768,11 @@ export class User {
 
     // Mid-transfer interruptions pause the download (sink kept) and land here.
     file._onInterrupted = () => this._handleFileInterrupted(file);
+
+    // Update inline preview when download finishes and blob is ready
+    file.onPreviewReady(() => {
+      this._renderFilePreview(file);
+    });
 
     // Update UI: Remove Download button and add loading icon
     document.getElementById(`file-${fileId}-download`).style.display = 'none'
@@ -1229,46 +1361,28 @@ export class User {
         conn.send({'webrtc-connect-response': {"status": "password_invalid"}})
       }
       else {
-        // Add peer to the peers list. Clamp the inbound name to a sane length; it's
-        // user-controlled and gets rendered in every connected peer's DOM.
+        // Add peer to the pending approvals list instead of immediately accepting.
         const cleanName = _sanitizeName(data['webrtc-connect']['name']);
         const peerOs = typeof data['webrtc-connect']['os'] === 'string' ? data['webrtc-connect']['os'] : 'generic';
 
-        // A retry from the same peer id replaces the entry — clear the old interval
-        // first or it leaks (see the peer-side comment above).
-        const prev = this._remotePeers[conn.peer];
-        if (prev?.interval) clearInterval(prev.interval);
+        // Notify connecting peer that the connection is pending host approval
+        conn.send({'webrtc-connect-response': {"status": "pending_approval"}});
 
-        this._remotePeers[conn.peer] = {"name": cleanName, "os": peerOs, "conn": conn,  "interval": setInterval(() => this._isAlive(conn.peer), 1000)}
-        this._watchIce(conn, this._remotePeers[conn.peer])
+        // Store in pending approvals
+        this._pendingApprovals[conn.peer] = {
+          conn,
+          cleanName,
+          peerOs,
+          hello,
+        };
 
-        // Show peer connected status
-        dom.transfer_status_wait.style.display = 'none'
-        dom.transfer_status_success.style.display = 'inline-block'
-
-        // Define peers list (including host user)
-        const peers_list = [{"id": this._peer.id, "name": this._name, "os": this._os }, ...Object.entries(this._remotePeers).map(([k, v]) => ({"id": k, "name": v.name, "os": v.os || 'generic'}))];
-
-        // Build user's list. conn.peer is the remote's peer id — already validated by
-        // the signaling server's id-format check at /ws register time.
-        this._addUserUI({"id": conn.peer, "name": this._remotePeers[conn.peer].name, "os": peerOs})
-
-        // Inspect peer connection topology (LAN vs NAT vs Relay) and render badge
-        if (conn.peerConnection) {
-          inspectPeerConnection(conn.peerConnection).then((tel) => {
-            if (tel) {
-              const telEl = document.getElementById(`user-${conn.peer}-telemetry`);
-              if (telEl) telEl.innerHTML = renderTelemetryBadge(tel);
-            }
-          }).catch(() => {});
-        }
-
-        // Send confirmation
-        conn.send({'webrtc-connect-response': {"status": "welcome", "secured": this._password.trim().length != 0}})
-
-        // Notify all peers
-        for (let p of Object.values(this._remotePeers)) {
-          p.conn.send({'webrtc-peers': peers_list, 'webrtc-files': Object.values(this._files).filter(x => !x.aborted && !x.removed).map(x => x.file)})
+        // Notify host UI to display approval modal
+        if (this._onApprovalRequestCallback) {
+          this._onApprovalRequestCallback({
+            peerId: conn.peer,
+            name: cleanName,
+            os: peerOs,
+          });
         }
       }
     }
@@ -1290,7 +1404,21 @@ export class User {
         dom.password_loading.style.display = 'none'
         conn.close()
       }
+      else if (response.status == 'pending_approval') {
+        if (this._onConnectionStatusCallback) {
+          this._onConnectionStatusCallback('pending_approval');
+        }
+      }
+      else if (response.status == 'rejected') {
+        if (this._onConnectionStatusCallback) {
+          this._onConnectionStatusCallback('rejected', response.reason);
+        }
+        conn.close();
+      }
       else if (response.status == 'welcome') {
+        if (this._onConnectionStatusCallback) {
+          this._onConnectionStatusCallback('connected');
+        }
         // Update UI Components
         dom.connect_div.style.display = 'none'
         dom.password_div.style.display = 'none'
@@ -1401,12 +1529,17 @@ export class User {
           if (typeof file.size !== 'number' || !Number.isFinite(file.size) || file.size < 0) continue;
           if (file.id in this._files) continue;
 
+          const thumbnail = (typeof file.thumbnail === 'string' && file.thumbnail.startsWith('data:image/'))
+            ? file.thumbnail
+            : null;
+
           const f = new File({
             id: file.id,
             name: _sanitizeFilename(file.name),
             size: file.size,
             owner_id: file.owner_id,
             owner_name: _sanitizeName(file.owner_name),
+            thumbnail: thumbnail,
           });
           this._files[f.id] = f;
           this._addFileUI(f);
@@ -1437,6 +1570,18 @@ export class User {
 
   // Emitted when either you or the remote peer closes the data connection.
   _handleClose(conn) {
+    // If peer closed while waiting for host approval
+    if (conn.peer in this._pendingApprovals) {
+      delete this._pendingApprovals[conn.peer];
+      if (this._onApprovalCancelledCallback) {
+        try {
+          this._onApprovalCancelledCallback(conn.peer);
+        } catch (err) {
+          console.error('Error in onApprovalCancelledCallback:', err);
+        }
+      }
+    }
+
     // Peer: The host has closed the connection
     if (conn.peer == this._room_id) {
       if (this._status?.status == 'welcome') {
@@ -1523,12 +1668,18 @@ export class User {
       if (typeof file.size !== 'number' || !Number.isFinite(file.size) || file.size < 0) continue;
       if (file.id in this._files) continue; // Don't accept duplicates from the wire.
 
+      // Validate thumbnail if provided from peer
+      const thumbnail = (typeof file.thumbnail === 'string' && file.thumbnail.startsWith('data:image/'))
+        ? file.thumbnail
+        : null;
+
       const fileData = {
         "id": file.id,
         "name": _sanitizeFilename(file.name),
         "size": file.size,
         "owner_id": file.owner_id,
         "owner_name": _sanitizeName(file.owner_name),
+        "thumbnail": thumbnail,
       };
 
       // Create file instance
@@ -1541,7 +1692,9 @@ export class User {
       this._addFileUI(f)
 
       // Store file to send it to other peers
-      data.push({"id": f.id, "name": f.name, "size": f.size, "owner_id": f.owner_id, "owner_name": f.owner_name})
+      const wireEntry = {"id": f.id, "name": f.name, "size": f.size, "owner_id": f.owner_id, "owner_name": f.owner_name};
+      if (thumbnail) wireEntry.thumbnail = thumbnail;
+      data.push(wireEntry);
     }
 
     // Send file to all peers excluding the peer that has sent the file
@@ -1831,6 +1984,9 @@ export class User {
           </div>
         </div>
 
+        <!-- MEDIA PREVIEW CONTAINER -->
+        <div id="file-${file.id}-preview-container" class="file-media-preview-container" style="display:none"></div>
+
         <div class="file-progress-wrapper">
           <div class="file-progress-track">
             <div id="file-${file.id}-progress-bar" class="file-progress-fill" style="width: 0%"></div>
@@ -1936,6 +2092,81 @@ export class User {
     // Update the number of files in the list (count is server-derived, but use
     // textContent for consistency).
     dom.transfer_files_count.textContent = ` (${dom.transfer_files_list.querySelectorAll('li').length})`;
+
+    // Render media preview if thumbnail or previewUrl is available
+    this._renderFilePreview(file);
+  }
+
+  _renderFilePreview(file) {
+    const container = document.getElementById(`file-${file.id}-preview-container`);
+    if (!container) return;
+
+    const typeInfo = getFileTypeInfo(file.name);
+    const isImage = typeInfo.category === 'image';
+    const isVideo = typeInfo.category === 'video';
+
+    container.innerHTML = '';
+
+    if (isImage) {
+      const src = file.previewUrl || file.thumbnail;
+      if (src) {
+        container.style.display = 'block';
+        const wrap = document.createElement('div');
+        wrap.className = 'file-thumbnail-wrap';
+        wrap.id = `file-${file.id}-thumb-wrap`;
+        wrap.title = 'Click to view full image in Lightbox';
+
+        const img = document.createElement('img');
+        img.className = 'file-thumbnail-img';
+        img.src = src;
+        img.alt = file.name;
+
+        const overlay = document.createElement('div');
+        overlay.className = 'file-thumbnail-overlay';
+        overlay.innerHTML = `
+          <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor"><path d="M10.5 8a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0z"/><path d="M0 8s3-5.5 8-5.5S16 8 16 8s-3 5.5-8 5.5S0 8 0 8zm8 3.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z"/></svg>
+          <span>Preview</span>
+        `;
+
+        wrap.appendChild(img);
+        wrap.appendChild(overlay);
+        wrap.addEventListener('click', () => {
+          this._openLightbox(src, file.name);
+        });
+        container.appendChild(wrap);
+      }
+    } else if (isVideo) {
+      if (file.previewUrl) {
+        container.style.display = 'block';
+        const wrap = document.createElement('div');
+        wrap.className = 'file-video-wrap';
+        const video = document.createElement('video');
+        video.className = 'file-video-player';
+        video.controls = true;
+        video.playsInline = true;
+        video.preload = 'metadata';
+        video.src = file.previewUrl;
+        wrap.appendChild(video);
+        container.appendChild(wrap);
+      }
+    }
+  }
+
+  _openLightbox(imgSrc, fileName) {
+    if (!dom.lightbox_modal) return;
+    if (dom.lightbox_image) dom.lightbox_image.src = imgSrc;
+    if (dom.lightbox_caption) dom.lightbox_caption.textContent = fileName;
+    if (dom.lightbox_download) {
+      dom.lightbox_download.href = imgSrc;
+      dom.lightbox_download.setAttribute('download', fileName);
+    }
+    if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+      const modal = bootstrap.Modal.getOrCreateInstance(dom.lightbox_modal);
+      modal.show();
+    } else {
+      dom.lightbox_modal.classList.add('show');
+      dom.lightbox_modal.style.display = 'block';
+    }
   }
 
   // Renders the "{size} | Sent by {owner_name}" caption for a file. owner_name is

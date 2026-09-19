@@ -273,13 +273,14 @@ function openBlobSink({ name, mime }) {
   const currentBatch = [];
   let currentBatchSize = 0;
   const BATCH_SIZE = 8 * 1024 * 1024; // 8 MB
+  let resultBlob = null;
 
   return {
     mode: 'blob',
+    getBlob() { return resultBlob; },
     async write(chunk) {
-      const copy = new Uint8Array(chunk);
-      currentBatch.push(copy);
-      currentBatchSize += copy.byteLength;
+      currentBatch.push(chunk);
+      currentBatchSize += chunk.byteLength;
       if (currentBatchSize >= BATCH_SIZE) {
         blobParts.push(new Blob(currentBatch));
         currentBatch.length = 0;
@@ -290,27 +291,30 @@ function openBlobSink({ name, mime }) {
       blobParts.length = 0;
       currentBatch.length = 0;
       currentBatchSize = 0;
+      resultBlob = null;
     },
     async close() {
       if (currentBatch.length > 0) {
         blobParts.push(new Blob(currentBatch));
         currentBatch.length = 0;
       }
-      const blob = new Blob(blobParts, mime ? { type: mime } : undefined);
+      resultBlob = new Blob(blobParts, mime ? { type: mime } : undefined);
       blobParts.length = 0;
-      const url = URL.createObjectURL(blob);
+      const url = URL.createObjectURL(resultBlob);
       const a = document.createElement('a');
       a.href = url;
       a.download = name;
       document.body.appendChild(a);
       a.click();
       a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      // Keep object URL active for preview; will be managed by File lifecycle
+      return resultBlob;
     },
     async abort() {
       blobParts.length = 0;
       currentBatch.length = 0;
       currentBatchSize = 0;
+      resultBlob = null;
     },
   };
 }

@@ -62,9 +62,14 @@ export const dom = {
 
   // CONNECT
   connect_div: document.getElementById('connect-div'),
+  connect_spinner: document.getElementById('connect-spinner'),
+  connect_status_icon_declined: document.getElementById('connect-status-icon-declined'),
+  connect_status_badge_wrap: document.getElementById('connect-status-badge-wrap'),
+  connect_status_badge: document.getElementById('connect-status-badge'),
   connect_status_title: document.getElementById('connect-status-title'),
   connect_status_desc: document.getElementById('connect-status-desc'),
   connect_cancel_btn: document.getElementById('connect-cancel-btn'),
+  connect_retry_btn: document.getElementById('connect-retry-btn'),
 
   // TRANSFER
   transfer_div: document.getElementById('transfer-div'),
@@ -170,6 +175,21 @@ export const dom = {
 
   // DRAG OVERLAY
   drag_overlay: document.getElementById('drag-overlay'),
+
+  // CONNECTION APPROVAL MODAL
+  approval_modal: document.getElementById('approval-modal'),
+  approval_peer_name: document.getElementById('approval-peer-name'),
+  approval_peer_details: document.getElementById('approval-peer-details'),
+  approval_peer_os: document.getElementById('approval-peer-os'),
+  approval_peer_avatar: document.getElementById('approval-peer-avatar'),
+  approval_accept_btn: document.getElementById('approval-accept-btn'),
+  approval_reject_btn: document.getElementById('approval-reject-btn'),
+
+  // LIGHTBOX MODAL
+  lightbox_modal: document.getElementById('lightbox-modal'),
+  lightbox_image: document.getElementById('lightbox-image'),
+  lightbox_caption: document.getElementById('lightbox-caption'),
+  lightbox_download: document.getElementById('lightbox-download'),
 
   // NOTIFICATION
   notification_modal: document.getElementById('notification-modal'),

@@ -139,7 +139,7 @@ globalThis.WebSocket = FakeWS;
 globalThis.RTCPeerConnection = FakePC;
 
 const _fileUrl = new URL('../../web/js/modules/webrtc/file.js', import.meta.url);
-const { File } = await import(_fileUrl.href);
+const { File, CHUNK_SIZE } = await import(_fileUrl.href);
 
 // ---------- helpers ----------
 const SENDER_PEER = 'sender-peer-000000000000000000000000000000';
@@ -283,7 +283,7 @@ test('receiver stall watchdog: silence mid-transfer pauses the download with a r
   await settle(400); // > stall timeout
   assert.equal(receiverFile.in_progress, false, 'stall watchdog paused the download');
   assert.equal(receiverFile.canResume, true);
-  assert.equal(receiverFile.resumeOffset, 16 * 1024, 'resume point = bytes durably written');
+  assert.equal(receiverFile.resumeOffset, CHUNK_SIZE, 'resume point = bytes durably written');
   assert.equal(sink.rec.aborted, null, 'sink kept open');
   assert.equal(receiverConn.closeCalls >= 1, true, 'paused connection was closed');
 
