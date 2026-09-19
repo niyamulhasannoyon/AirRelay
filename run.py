@@ -37,6 +37,22 @@ server.add_middleware(
     allow_headers=["*"],
 )
 
+@server.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self'; "
+        "connect-src 'self' ws: wss: stun: turn: turns:; worker-src 'self' blob:; "
+        "frame-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; "
+        "frame-ancestors 'self'"
+    )
+    response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "same-origin")
+    return response
+
 # Mount API sub-application at /api
 server.mount("/api", api_app)
 

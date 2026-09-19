@@ -5,11 +5,16 @@ import assert from 'node:assert/strict';
 const _elements = new Map();
 function makeEl(id) {
   const classes = new Set();
+  let _innerHtml = '';
   const el = {
     id,
     style: {},
     textContent: '',
-    innerHTML: '',
+    get innerHTML() { return _innerHtml; },
+    set innerHTML(v) {
+      _innerHtml = v;
+      if (v === '') el.children = [];
+    },
     value: '',
     disabled: false,
     dataset: {},
@@ -211,3 +216,55 @@ test('User _applyFileFilters correctly filters cards by direction and category',
   assert.equal(card2.style.display, 'flex');
   assert.equal(card3.style.display, 'none');
 });
+
+test('User _renderFilePreview prioritizes thumbnail and attaches onerror fallback', () => {
+  const user = new User('');
+  const container = makeEl('file-img1-preview-container');
+  _elements.set('file-img1-preview-container', container);
+
+  const file = {
+    id: 'img1',
+    name: 'screenshot.png',
+    thumbnail: 'data:image/webp;base64,AAAA',
+    previewUrl: 'blob:http://localhost/test-blob',
+  };
+
+  user._renderFilePreview(file);
+
+  assert.equal(container.children.length, 1);
+  const img = container.children[0];
+  assert.equal(img.src, 'data:image/webp;base64,AAAA', 'Should prioritize data URL thumbnail for grid card');
+  assert.equal(typeof img.onerror, 'function', 'Should attach onerror fallback');
+
+  // Trigger onerror when primary source fails: should switch to fallback blob previewUrl
+  img.onerror();
+  assert.equal(img.src, 'blob:http://localhost/test-blob', 'Should fall back to previewUrl if thumbnail fails');
+
+  // Trigger onerror again when fallback also fails: should replace with fallback tile
+  img.onerror();
+  assert.equal(container.children.length, 1);
+  assert.equal(container.children[0].className, 'file-grid-doc-tile');
+  assert.ok(container.children[0].innerHTML.includes('file-grid-doc-icon'), 'Should render fallback tile if both sources fail');
+  assert.ok(container.children[0].innerHTML.includes('.png'), 'Should render extension badge');
+});
+
+test('User _renderFilePreview directly renders fallback tile when no thumbnail or preview is present', () => {
+  const user = new User('');
+  const container = makeEl('file-doc1-preview-container');
+  _elements.set('file-doc1-preview-container', container);
+
+  const file = {
+    id: 'doc1',
+    name: 'presentation.pdf',
+    thumbnail: null,
+    previewUrl: null,
+  };
+
+  user._renderFilePreview(file);
+
+  assert.equal(container.children.length, 1);
+  assert.equal(container.children[0].className, 'file-grid-doc-tile');
+  assert.ok(container.children[0].innerHTML.includes('file-grid-doc-icon'));
+  assert.ok(container.children[0].innerHTML.includes('.pdf'));
+});
+

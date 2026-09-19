@@ -126,19 +126,78 @@ export function getOSIconSVG(os, size = 16) {
 
 export async function generateImageThumbnail(fileBlob, maxDim = 320) {
   if (typeof window === 'undefined' || typeof document === 'undefined') return null;
+
+  const renderOnCanvas = (source, width, height) => {
+    if (!width || !height) return null;
+    const scale = Math.min(maxDim / width, maxDim / height, 1);
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(width * scale));
+    canvas.height = Math.max(1, Math.round(height * scale));
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+
+    ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
+
+    // Prefer WebP: full alpha channel support prevents transparent PNGs from blacking out,
+    // and produces superior compression for fast signaling wire transfer.
+    try {
+      const webp = canvas.toDataURL('image/webp', 0.82);
+      if (typeof webp === 'string' && webp.startsWith('data:image/webp')) {
+        return webp;
+      }
+    } catch {}
+
+    // Fallback: composite over a neutral theme tone (#1e293b) before JPEG export
+    // so any transparent alpha pixels never turn pure pitch black.
+    try {
+      const bgCanvas = document.createElement('canvas');
+      bgCanvas.width = canvas.width;
+      bgCanvas.height = canvas.height;
+      const bgCtx = bgCanvas.getContext('2d');
+      if (bgCtx) {
+        bgCtx.fillStyle = '#1e293b';
+        bgCtx.fillRect(0, 0, bgCanvas.width, bgCanvas.height);
+        bgCtx.drawImage(canvas, 0, 0);
+        return bgCanvas.toDataURL('image/jpeg', 0.82);
+      }
+    } catch {}
+
+    try {
+      return canvas.toDataURL('image/png');
+    } catch {}
+
+    return null;
+  };
+
   try {
     if (typeof createImageBitmap === 'function') {
-      const bitmap = await createImageBitmap(fileBlob);
-      const scale = Math.min(maxDim / bitmap.width, maxDim / bitmap.height, 1);
-      const canvas = document.createElement('canvas');
-      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
-      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-      bitmap.close?.();
-      return canvas.toDataURL('image/jpeg', 0.72);
+      try {
+        const bitmap = await createImageBitmap(fileBlob);
+        const res = renderOnCanvas(bitmap, bitmap.width, bitmap.height);
+        bitmap.close?.();
+        if (res) return res;
+      } catch {}
     }
-  } catch {}
+
+    if (typeof FileReader !== 'undefined') {
+      return await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const img = new Image();
+          img.onload = () => {
+            const res = renderOnCanvas(img, img.naturalWidth || img.width, img.naturalHeight || img.height);
+            resolve(res);
+          };
+          img.onerror = () => resolve(null);
+          img.src = reader.result;
+        };
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(fileBlob);
+      });
+    }
+  } catch (err) {
+    console.warn('generateImageThumbnail failed:', err);
+  }
   return null;
 }
 
@@ -2326,6 +2385,11 @@ export class User {
     if (typeInfo.category === 'image') {
       if (dom.lightbox_image_wrap && dom.lightbox_image) {
         dom.lightbox_image_wrap.style.display = 'flex';
+        dom.lightbox_image.onerror = () => {
+          if (file.thumbnail && dom.lightbox_image.src !== file.thumbnail) {
+            dom.lightbox_image.src = file.thumbnail;
+          }
+        };
         dom.lightbox_image.src = src || '';
       }
     } else if (typeInfo.category === 'video') {
@@ -2589,21 +2653,65 @@ export class User {
     this._renderFilePreview(file);
   }
 
+  _renderFallbackTile(file, container) {
+    if (!container) return;
+    container.innerHTML = '';
+    const typeInfo = getFileTypeInfo(file.name);
+    const tile = document.createElement('div');
+    tile.className = 'file-grid-doc-tile';
+    let iconSvg = '';
+    if (typeInfo.category === 'image') {
+      iconSvg = `<svg width="24" height="24" viewBox="0 0 16 16" fill="currentColor"><path d="M6.002 5.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0z"/><path d="M2.002 1a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V3a2 2 0 0 0-2-2h-12zm12 1a1 1 0 0 1 1 1v6.5l-3.777-1.947a.5.5 0 0 0-.577.093l-3.71 3.71-2.66-1.772a.5.5 0 0 0-.63.062L1.002 12V3a1 1 0 0 1 1-1h12z"/></svg>`;
+    } else if (typeInfo.category === 'video') {
+      iconSvg = `<svg width="24" height="24" viewBox="0 0 16 16" fill="currentColor"><path d="M0 1a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H1a1 1 0 0 1-1-1V1zm4 10.5a.5.5 0 0 0 .757.429l5.5-3.5a.5.5 0 0 0 0-.858l-5.5-3.5A.5.5 0 0 0 4 4.5v7z"/></svg>`;
+    } else if (typeInfo.category === 'audio') {
+      iconSvg = `<svg width="24" height="24" viewBox="0 0 16 16" fill="currentColor"><path d="M6 13c0 1.105-1.12 2-2.5 2S1 14.105 1 13s1.12-2 2.5-2 2.5.895 2.5 2zm9-2c0 1.105-1.12 2-2.5 2s-2.5-.895-2.5-2 1.12-2 2.5-2 2.5.895 2.5 2z"/><path fill-rule="evenodd" d="M14 11V2h1v9h-1zM6 3v10H5V3h1z"/><path d="M5 2.905a1 1 0 0 1 .9-.995l8-.8a1 1 0 0 1 1.1.995V3L5 4V2.905z"/></svg>`;
+    } else if (typeInfo.category === 'pdf') {
+      iconSvg = `<svg width="24" height="24" viewBox="0 0 16 16" fill="currentColor"><path d="M14 14V4.5L9.5 0H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2zM9.5 3A1.5 1.5 0 0 0 11 4.5h2V14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h5.5v2z"/></svg>`;
+    } else if (typeInfo.category === 'code') {
+      iconSvg = `<svg width="24" height="24" viewBox="0 0 16 16" fill="currentColor"><path d="M10.478 1.647a.5.5 0 1 0-.956-.294l-4 13a.5.5 0 0 0 .956.294l4-13zM4.854 4.146a.5.5 0 0 1 0 .708L1.707 8l3.147 3.146a.5.5 0 0 1-.708.708l-3.5-3.5a.5.5 0 0 1 0-.708l3.5-3.5a.5.5 0 0 1 .708 0zm6.292 0a.5.5 0 0 0 0 .708L14.293 8l-3.147 3.146a.5.5 0 0 0 .708.708l3.5-3.5a.5.5 0 0 0 0-.708l-3.5-3.5a.5.5 0 0 0-.708 0z"/></svg>`;
+    } else if (typeInfo.category === 'archive') {
+      iconSvg = `<svg width="24" height="24" viewBox="0 0 16 16" fill="currentColor"><path d="M2.5 1A1.5 1.5 0 0 0 1 2.5v11A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-11A1.5 1.5 0 0 0 13.5 1h-11zm5 2h1v1h-1V3zm0 2h1v1h-1V5zm0 2h1v1h-1V7zm0 2h1v1h-1V9zm0 2h1v2h-1v-2z"/></svg>`;
+    } else {
+      iconSvg = `<svg width="24" height="24" viewBox="0 0 16 16" fill="currentColor"><path d="M14 4.5V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2h5.5zm-3 0A1.5 1.5 0 0 1 9.5 3V1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V4.5z"/></svg>`;
+    }
+
+    tile.innerHTML = `
+      <div class="file-grid-doc-icon" style="background: ${typeInfo.color}18; color: ${typeInfo.color}; border: 1px solid ${typeInfo.color}35;">
+        ${iconSvg}
+      </div>
+      <span style="font-size: 0.75rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase;">.${typeInfo.ext || 'FILE'}</span>
+    `;
+    container.appendChild(tile);
+  }
+
   _renderFilePreview(file) {
     const container = document.getElementById(`file-${file.id}-preview-container`);
     if (!container) return;
 
     const typeInfo = getFileTypeInfo(file.name);
-    const hasThumb = !!(file.previewUrl || file.thumbnail);
-    container.innerHTML = '';
+    // Prioritize lightweight data: URI thumbnail for grid cards, or previewUrl blob
+    const primarySrc = file.thumbnail || file.previewUrl;
+    const fallbackSrc = (primarySrc === file.thumbnail && file.previewUrl)
+      ? file.previewUrl
+      : ((primarySrc === file.previewUrl && file.thumbnail) ? file.thumbnail : null);
 
-    if (hasThumb) {
-      const src = file.previewUrl || file.thumbnail;
+    if (primarySrc) {
+      container.innerHTML = '';
       const img = document.createElement('img');
       img.className = 'file-grid-thumb';
-      img.src = src;
+      img.src = primarySrc;
       img.alt = file.name;
       img.loading = 'lazy';
+
+      img.onerror = () => {
+        if (fallbackSrc && img.src !== fallbackSrc) {
+          img.src = fallbackSrc;
+        } else {
+          this._renderFallbackTile(file, container);
+        }
+      };
+
       container.appendChild(img);
 
       if (typeInfo.category === 'video') {
@@ -2613,28 +2721,7 @@ export class User {
         container.appendChild(playOverlay);
       }
     } else {
-      const tile = document.createElement('div');
-      tile.className = 'file-grid-doc-tile';
-      let iconSvg = '';
-      if (typeInfo.category === 'audio') {
-        iconSvg = `<svg width="24" height="24" viewBox="0 0 16 16" fill="currentColor"><path d="M6 13c0 1.105-1.12 2-2.5 2S1 14.105 1 13s1.12-2 2.5-2 2.5.895 2.5 2zm9-2c0 1.105-1.12 2-2.5 2s-2.5-.895-2.5-2 1.12-2 2.5-2 2.5.895 2.5 2z"/><path fill-rule="evenodd" d="M14 11V2h1v9h-1zM6 3v10H5V3h1z"/><path d="M5 2.905a1 1 0 0 1 .9-.995l8-.8a1 1 0 0 1 1.1.995V3L5 4V2.905z"/></svg>`;
-      } else if (typeInfo.category === 'pdf') {
-        iconSvg = `<svg width="24" height="24" viewBox="0 0 16 16" fill="currentColor"><path d="M14 14V4.5L9.5 0H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2zM9.5 3A1.5 1.5 0 0 0 11 4.5h2V14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h5.5v2z"/></svg>`;
-      } else if (typeInfo.category === 'code') {
-        iconSvg = `<svg width="24" height="24" viewBox="0 0 16 16" fill="currentColor"><path d="M10.478 1.647a.5.5 0 1 0-.956-.294l-4 13a.5.5 0 0 0 .956.294l4-13zM4.854 4.146a.5.5 0 0 1 0 .708L1.707 8l3.147 3.146a.5.5 0 0 1-.708.708l-3.5-3.5a.5.5 0 0 1 0-.708l3.5-3.5a.5.5 0 0 1 .708 0zm6.292 0a.5.5 0 0 0 0 .708L14.293 8l-3.147 3.146a.5.5 0 0 0 .708.708l3.5-3.5a.5.5 0 0 0 0-.708l-3.5-3.5a.5.5 0 0 0-.708 0z"/></svg>`;
-      } else if (typeInfo.category === 'archive') {
-        iconSvg = `<svg width="24" height="24" viewBox="0 0 16 16" fill="currentColor"><path d="M2.5 1A1.5 1.5 0 0 0 1 2.5v11A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-11A1.5 1.5 0 0 0 13.5 1h-11zm5 2h1v1h-1V3zm0 2h1v1h-1V5zm0 2h1v1h-1V7zm0 2h1v1h-1V9zm0 2h1v2h-1v-2z"/></svg>`;
-      } else {
-        iconSvg = `<svg width="24" height="24" viewBox="0 0 16 16" fill="currentColor"><path d="M14 4.5V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2h5.5zm-3 0A1.5 1.5 0 0 1 9.5 3V1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V4.5z"/></svg>`;
-      }
-
-      tile.innerHTML = `
-        <div class="file-grid-doc-icon" style="background: ${typeInfo.color}18; color: ${typeInfo.color}; border: 1px solid ${typeInfo.color}35;">
-          ${iconSvg}
-        </div>
-        <span style="font-size: 0.75rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase;">.${typeInfo.ext || 'FILE'}</span>
-      `;
-      container.appendChild(tile);
+      this._renderFallbackTile(file, container);
     }
   }
 

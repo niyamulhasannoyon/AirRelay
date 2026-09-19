@@ -2698,7 +2698,7 @@ kbd {
   height: 155px;
   width: 100%;
   position: relative;
-  background: rgba(0, 0, 0, 0.35);
+  background: var(--glass-bg-subtle, rgba(255, 255, 255, 0.03));
   overflow: hidden;
   display: flex;
   align-items: center;
@@ -2710,6 +2710,7 @@ kbd {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  display: block;
   transition: transform 0.35s ease;
 }
 
