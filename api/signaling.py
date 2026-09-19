@@ -399,9 +399,20 @@ class _PeerRegistry:
             return None
 
         clean = query.strip()
+        # Strip URL hash/fragment if present
+        if "#" in clean:
+            clean = clean.split("#", 1)[0].strip()
+        # Strip URL query parameters if present
+        if "?" in clean:
+            clean = clean.split("?", 1)[0].strip()
         # If user pasted a URL, extract the last path segment
         if "/" in clean:
             clean = clean.rstrip("/").split("/")[-1].strip()
+        # Strip query parameters again in case query followed a trailing slash
+        if "?" in clean:
+            clean = clean.split("?", 1)[0].strip()
+        if "#" in clean:
+            clean = clean.split("#", 1)[0].strip()
 
         # Check normalized 6-digit code
         digits = "".join(filter(str.isdigit, clean))

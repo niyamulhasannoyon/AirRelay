@@ -16,7 +16,7 @@ if not os.getenv("SECRET_KEY") and not os.getenv("SECRET_FILE"):
 
 import uvicorn
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -43,6 +43,39 @@ server.mount("/api", api_app)
 # Include WebSocket signaling at /ws
 server.include_router(signaling_router)
 
+STATIC_EXTENSIONS = {
+    ".js", ".css", ".png", ".jpg", ".jpeg", ".svg", ".ico",
+    ".woff", ".woff2", ".ttf", ".json", ".map", ".webmanifest"
+}
+
+
+def _serve_file(target: Path) -> FileResponse:
+    media_type = None
+    if target.name.endswith(".webmanifest"):
+        media_type = "application/manifest+json"
+    elif target.name.endswith(".js"):
+        media_type = "application/javascript"
+    elif target.name.endswith(".css"):
+        media_type = "text/css"
+    elif target.name.endswith(".svg"):
+        media_type = "image/svg+xml"
+    elif target.name.endswith(".json") or target.name.endswith(".map"):
+        media_type = "application/json"
+    elif target.name.endswith(".png"):
+        media_type = "image/png"
+    elif target.name.endswith(".ico"):
+        media_type = "image/x-icon"
+    elif target.name.endswith(".jpg") or target.name.endswith(".jpeg"):
+        media_type = "image/jpeg"
+    elif target.name.endswith(".woff2"):
+        media_type = "font/woff2"
+    elif target.name.endswith(".woff"):
+        media_type = "font/woff"
+    elif target.name.endswith(".ttf"):
+        media_type = "font/ttf"
+    return FileResponse(target, media_type=media_type)
+
+
 # Serve web frontend files and SPA room routes
 @server.api_route("/{full_path:path}", methods=["GET", "HEAD"])
 async def serve_frontend(full_path: str):
@@ -66,21 +99,31 @@ async def serve_frontend(full_path: str):
 
     # If it is a real static file in web/, serve it directly
     if clean_path and target.is_file():
-        # Correct content-type for web manifest and service worker
-        media_type = None
-        if target.name.endswith(".webmanifest"):
-            media_type = "application/manifest+json"
-        elif target.name.endswith(".js"):
-            media_type = "application/javascript"
-        elif target.name.endswith(".css"):
-            media_type = "text/css"
-        elif target.name.endswith(".svg"):
-            media_type = "image/svg+xml"
-        elif target.name.endswith(".json"):
-            media_type = "application/json"
-        elif target.name.endswith(".png"):
-            media_type = "image/png"
-        return FileResponse(target, media_type=media_type)
+        return _serve_file(target)
+
+    # Defensive asset resolution: if path contains static asset directories (/css/, /js/, /assets/),
+    # resolve from WEB_DIR regardless of any room route prefix (e.g. /<room_id>/js/modules/script.js).
+    for asset_prefix in ("css", "js", "assets"):
+        marker = f"/{asset_prefix}/"
+        if marker in f"/{clean_path}/":
+            parts = clean_path.split("/")
+            if asset_prefix in parts:
+                idx = parts.index(asset_prefix)
+                sub_path = "/".join(parts[idx:])
+                fallback_target = WEB_DIR / sub_path
+                if fallback_target.is_file():
+                    return _serve_file(fallback_target)
+
+    # If sw.js was requested under any sub-path, serve the root sw.js
+    if clean_path.endswith("sw.js"):
+        sw_file = WEB_DIR / "sw.js"
+        if sw_file.is_file():
+            return _serve_file(sw_file)
+
+    # For known static asset extensions that do not exist, return 404 instead of
+    # falling through to index.html (which breaks browser script/CSS MIME loading).
+    if target.suffix in STATIC_EXTENSIONS:
+        return Response(status_code=404)
 
     # For root `/` and any SPA room paths (e.g. `/abc-def-ghi`), serve index.html
     index_file = WEB_DIR / "index.html"

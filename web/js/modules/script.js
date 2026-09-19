@@ -6,7 +6,10 @@ import { isSoundEnabled, toggleSound } from './sound.js';
 
 // Room ID and deep-link query parameter resolution
 const urlParams = new URLSearchParams(window.location.search);
-const rawPath = window.location.pathname.replace(/^\/+|\/+$/g, '');
+let rawPath = window.location.pathname.replace(/^\/+|\/+$/g, '');
+if (rawPath === 'index.html') rawPath = '';
+if (rawPath.startsWith('room/')) rawPath = rawPath.slice(5);
+if (rawPath.startsWith('join/')) rawPath = rawPath.slice(5);
 const room_id = rawPath || urlParams.get('room') || urlParams.get('join') || urlParams.get('code') || '';
 
 // Store current user
@@ -75,7 +78,7 @@ function updateQRCodes(url) {
 // Get theme mode
 if (window.localStorage.getItem('mode') == 'light') {
   dom.theme_text.innerHTML = 'Light'
-  dom.comic_img.src = "assets/comic.png"
+  dom.comic_img.src = "/assets/comic.png"
   qr.set({foreground: '#212529'});
   const mq = getModalQr();
   if (mq) mq.set({foreground: '#0f172a'});
@@ -97,18 +100,31 @@ async function loadVersion() {
 
 // On Load
 async function onLoad() {
-  // Load version badge
-  await loadVersion();
+  // If joining a room, immediately display connect UI so the screen is never blank
+  if (room_id.length > 0) {
+    if (dom.action_mode_nav) dom.action_mode_nav.style.display = 'none';
+    if (dom.room_tab_security_btn) dom.room_tab_security_btn.style.display = 'none';
+    if (dom.transfer_div) dom.transfer_div.style.display = 'none';
+    if (dom.join_view) dom.join_view.style.display = 'none';
+    if (dom.connect_div) {
+      dom.connect_div.style.display = 'block';
+      updateConnectStatus('Connecting to room...', 'Initializing AirRelay session...');
+    }
+  }
+
+  // Load version badge in background (never blocks UI)
+  loadVersion();
 
   // Check WebRTC browser compatibility
   if (typeof RTCPeerConnection === 'undefined') {
-    dom.error_div.style.display = 'block'
-    dom.error_message.innerHTML = 'Your browser does not support <a href="https://caniuse.com/?search=webrtc" target="_blank" style="color: inherit; text-decoration: underline;">WebRTC</a>.<br><span style="color: #6c757d; font-size: 14px; margin-top: 10px; display: inline-block;">Please use a modern browser such as Chrome, Firefox, or Safari.</span>'
-    return
+    if (dom.connect_div) dom.connect_div.style.display = 'none';
+    dom.error_div.style.display = 'block';
+    dom.error_message.innerHTML = 'Your browser does not support <a href="https://caniuse.com/?search=webrtc" target="_blank" style="color: inherit; text-decoration: underline;">WebRTC</a>.<br><span style="color: #6c757d; font-size: 14px; margin-top: 10px; display: inline-block;">Please use a modern browser such as Chrome, Firefox, or Safari.</span>';
+    return;
   }
 
-  // Register the Service Worker (no-op in insecure contexts).
-  await registerServiceWorker();
+  // Register the Service Worker in background (no-op in insecure contexts).
+  registerServiceWorker();
 
   // Show the dev sink badge if a ?sink= override is active.
   installSinkBadge();
@@ -274,7 +290,7 @@ function themeClick() {
     document.documentElement.classList.add("light")
     document.documentElement.setAttribute('data-bs-theme', 'light')
     window.localStorage.setItem('mode', 'light')
-    dom.comic_img.src = "assets/comic.png"
+    dom.comic_img.src = "/assets/comic.png"
     qr.set({foreground: '#212529'});
     const mq = getModalQr();
     if (mq) mq.set({foreground: '#0f172a'});
@@ -287,7 +303,7 @@ function themeClick() {
     document.documentElement.classList.add("dark")
     document.documentElement.setAttribute('data-bs-theme', 'dark')
     window.localStorage.setItem('mode', 'dark')
-    dom.comic_img.src = "assets/comic-dark.png"
+    dom.comic_img.src = "/assets/comic-dark.png"
     qr.set({foreground: '#adb5db'});
     const mq = getModalQr();
     if (mq) mq.set({foreground: '#080b11'});
@@ -784,7 +800,20 @@ async function renderNearbyList() {
 
 async function submitJoinCode(query) {
   if (!query || query.trim().length === 0) return;
-  const clean = query.trim();
+  let clean = query.trim();
+
+  // If query is a URL, parse it cleanly to extract the slug or code
+  try {
+    if (clean.startsWith('http://') || clean.startsWith('https://')) {
+      const u = new URL(clean);
+      clean = u.pathname.replace(/^\/+|\/+$/g, '') || u.searchParams.get('room') || u.searchParams.get('join') || u.searchParams.get('code') || clean;
+    }
+  } catch {}
+  if (clean.startsWith('room/')) clean = clean.slice(5);
+  if (clean.startsWith('join/')) clean = clean.slice(5);
+  if (clean.includes('?')) clean = clean.split('?')[0];
+  if (clean.includes('#')) clean = clean.split('#')[0];
+  clean = clean.trim();
 
   if (dom.join_error_msg) dom.join_error_msg.style.display = 'none';
   if (dom.join_loading) dom.join_loading.style.display = 'block';

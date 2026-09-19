@@ -57,6 +57,26 @@ async def test_resolve_room_by_code_and_slug():
         assert res4 is not None
         assert res4["room_id"] == "room-blue-ocean"
 
+        # Resolve by URL with query parameters (e.g. QR code auto-connect)
+        res5 = _REGISTRY.resolve_room("http://192.168.1.50:8080/room-blue-ocean?auto=1")
+        assert res5 is not None
+        assert res5["room_id"] == "room-blue-ocean"
+
+        # Resolve by URL with trailing slash and query + hash
+        res6 = _REGISTRY.resolve_room("http://192.168.1.50:8080/room-blue-ocean/?auto=1#section")
+        assert res6 is not None
+        assert res6["room_id"] == "room-blue-ocean"
+
+        # Resolve by slug with query
+        res7 = _REGISTRY.resolve_room("room-blue-ocean?auto=1")
+        assert res7 is not None
+        assert res7["room_id"] == "room-blue-ocean"
+
+        # Resolve by 6-digit code with query
+        res8 = _REGISTRY.resolve_room("582914?auto=1")
+        assert res8 is not None
+        assert res8["room_id"] == "room-blue-ocean"
+
         # Resolve non-existent room
         res_none = _REGISTRY.resolve_room("999999")
         assert res_none is None
