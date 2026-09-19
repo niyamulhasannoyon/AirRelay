@@ -1379,6 +1379,7 @@ export class User {
         // Notify host UI to display approval modal
         if (this._onApprovalRequestCallback) {
           this._onApprovalRequestCallback({
+            id: conn.peer,
             peerId: conn.peer,
             name: cleanName,
             os: peerOs,

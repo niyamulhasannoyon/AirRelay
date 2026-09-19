@@ -126,7 +126,7 @@ async function onLoad() {
 
   // Host approval request handling
   user.onApprovalRequest((peer) => {
-    activeApprovalPeerId = peer.id;
+    activeApprovalPeerId = peer.id || peer.peerId;
     if (dom.approval_peer_name) dom.approval_peer_name.textContent = peer.name;
     if (dom.approval_peer_avatar) dom.approval_peer_avatar.innerHTML = getIdenticonSVG(peer.name, 38);
     if (dom.approval_peer_os) dom.approval_peer_os.innerHTML = getOSIconSVG(peer.os, 18);
@@ -141,16 +141,8 @@ async function onLoad() {
   });
 
   user.onApprovalCancelled((peerId) => {
-    if (activeApprovalPeerId === peerId) {
-      activeApprovalPeerId = null;
-      if (dom.approval_modal) {
-        if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
-          bootstrap.Modal.getInstance(dom.approval_modal)?.hide();
-        } else {
-          dom.approval_modal.classList.remove('show');
-          dom.approval_modal.style.display = 'none';
-        }
-      }
+    if (activeApprovalPeerId === peerId || !activeApprovalPeerId) {
+      hideApprovalModal();
       showToast('Peer cancelled the connection request.', 'warning');
     }
   });
@@ -444,6 +436,25 @@ function updateConnectStatus(title, desc, { badge = null, badgeClass = 'bg-prima
 
   if (dom.connect_retry_btn) {
     dom.connect_retry_btn.style.display = retry ? 'inline-flex' : 'none';
+  }
+}
+
+// Reliable dismissal of host approval modal
+function hideApprovalModal() {
+  activeApprovalPeerId = null;
+  if (dom.approval_modal) {
+    if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+      try {
+        bootstrap.Modal.getOrCreateInstance(dom.approval_modal).hide();
+      } catch {}
+    }
+    dom.approval_modal.classList.remove('show');
+    dom.approval_modal.style.display = 'none';
+    const backdrops = document.querySelectorAll('.modal-backdrop');
+    backdrops.forEach(b => b.remove());
+    document.body.classList.remove('modal-open');
+    document.body.style.removeProperty('padding-right');
+    document.body.style.removeProperty('overflow');
   }
 }
 
@@ -1181,35 +1192,26 @@ function bindUI() {
   });
 
   // Host approval action buttons
-  on('approval-accept-btn', 'click', () => {
-    if (!activeApprovalPeerId) return;
-    const pid = activeApprovalPeerId;
-    activeApprovalPeerId = null;
-    if (dom.approval_modal) {
-      if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
-        bootstrap.Modal.getInstance(dom.approval_modal)?.hide();
-      } else {
-        dom.approval_modal.classList.remove('show');
-        dom.approval_modal.style.display = 'none';
-      }
+  const handleApprove = (e) => {
+    e?.preventDefault?.();
+    const pid = activeApprovalPeerId || Object.keys(user?._pendingApprovals || {})[0];
+    hideApprovalModal();
+    if (pid && user) {
+      user.approvePeer(pid);
     }
-    user?.approvePeer(pid);
-  });
+  };
 
-  on('approval-reject-btn', 'click', () => {
-    if (!activeApprovalPeerId) return;
-    const pid = activeApprovalPeerId;
-    activeApprovalPeerId = null;
-    if (dom.approval_modal) {
-      if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
-        bootstrap.Modal.getInstance(dom.approval_modal)?.hide();
-      } else {
-        dom.approval_modal.classList.remove('show');
-        dom.approval_modal.style.display = 'none';
-      }
+  const handleReject = (e) => {
+    e?.preventDefault?.();
+    const pid = activeApprovalPeerId || Object.keys(user?._pendingApprovals || {})[0];
+    hideApprovalModal();
+    if (pid && user) {
+      user.rejectPeer(pid, 'Connection request was declined by the host.');
     }
-    user?.rejectPeer(pid, 'Connection request was declined by the host.');
-  });
+  };
+
+  on('approval-accept-btn', 'click', handleApprove);
+  on('approval-reject-btn', 'click', handleReject);
   on('transfer-share-btn', 'click', shareRoom);
   on('transfer-qr-btn', 'click', openQRModal);
   on('transfer-qr-code', 'click', openQRModal);
