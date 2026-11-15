@@ -80,7 +80,7 @@
 
   --text-primary: #0f172a;
   --text-secondary: #475569;
-  --text-muted: #94a3b8;
+  --text-muted: #64748b;
   --accent-primary: #2563eb;
   --accent-cyan: #0891b2;
   --accent-gradient: linear-gradient(135deg, #2563eb 0%, #0891b2 100%);
@@ -458,7 +458,7 @@ body {
 
 .dropzone-subtext {
   font-size: 0.85rem;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   margin: 0 0 16px;
 }
 
@@ -800,6 +800,20 @@ body {
   border-radius: var(--radius-xl) !important;
   color: var(--text-primary) !important;
   box-shadow: var(--shadow-lg) !important;
+}
+
+:root.dark .modal-content {
+  background: rgba(15, 20, 31, 0.94) !important;
+}
+
+:root.light .modal-content {
+  background: rgba(255, 255, 255, 0.96) !important;
+}
+
+.modal-backdrop.show {
+  opacity: 0.65;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
 }
 
 .modal-header, .modal-footer {

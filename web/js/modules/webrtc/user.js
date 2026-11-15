@@ -357,7 +357,7 @@ export class User {
   }
 
   set password(value) {
-    this._password = value
+    this._password = (value || '').toString();
   }
 
   async _hashPassword(password) {
@@ -643,58 +643,81 @@ export class User {
 
   // Change user's name
   changeName(value) {
+    const trimmed = (typeof value === 'string' ? value : '').trim();
     // Check if name is empty
-    if (!value || value.length === 0) {
-      showToast('Name cannot be empty.', 'warning')
-      dom.name_modal_value.focus()
-      return
+    if (!trimmed || trimmed.length === 0) {
+      showToast('Name cannot be empty.', 'warning');
+      if (dom.host_name_input && dom.host_name_input.style.display !== 'none') {
+        dom.host_name_input.focus();
+      } else if (dom.name_modal_value) {
+        dom.name_modal_value.focus();
+      }
+      return;
     }
 
     // Clamp to a sane length before doing anything else — defends downstream renderers
     // and matches the limit we apply to inbound names from other peers.
-    value = _sanitizeName(value);
+    value = _sanitizeName(trimmed);
 
     // Check if there is another user with the same name
-    const duplicated = Object.entries(this._remotePeers).some(([k, v]) => v.name == value && k != this._peer.id)
+    const duplicated = Object.entries(this._remotePeers).some(([k, v]) => v.name == value && k != this._peer?.id);
     if (duplicated) {
-      showToast('This name already exists.', 'warning')
-      dom.name_modal_value.focus()
-      return
+      showToast('This name already exists.', 'warning');
+      if (dom.host_name_input && dom.host_name_input.style.display !== 'none') {
+        dom.host_name_input.focus();
+      } else if (dom.name_modal_value) {
+        dom.name_modal_value.focus();
+      }
+      return;
     }
 
     // Update user
-    this._name = value
+    this._name = value;
 
     // Update files
-    for (let f of Object.values(this._files)) {
-      if (f.owner_id == this._peer.id) {
-        f.owner_name = this._name
-        this._setFileInfoText(f)
+    if (this._peer) {
+      for (let f of Object.values(this._files)) {
+        if (f.owner_id == this._peer.id) {
+          f.owner_name = this._name;
+          this._setFileInfoText(f);
+        }
       }
     }
 
     if (this._isHost) {
       // Update UI
-      document.getElementById('transfer-users-list-host-name').textContent = `${this._name} (You)`
+      const hostNameEl = document.getElementById('transfer-users-list-host-name');
+      if (hostNameEl) hostNameEl.textContent = `${this._name} (You)`;
 
       // Notify all peers
-      const peers_list = [{"id": this._peer.id, "name": this._name, "os": this._os }, ...Object.entries(this._remotePeers).map(([k, v]) => ({"id": k, "name": v.name, "os": v.os || 'generic'}))];
-      for (let p of Object.values(this._remotePeers)) {
-        p.conn.send({'webrtc-peers': peers_list})
+      if (this._peer) {
+        const peers_list = [{"id": this._peer.id, "name": this._name, "os": this._os }, ...Object.entries(this._remotePeers).map(([k, v]) => ({"id": k, "name": v.name, "os": v.os || 'generic'}))];
+        for (let p of Object.values(this._remotePeers)) {
+          if (p.conn) p.conn.send({'webrtc-peers': peers_list});
+        }
       }
     }
     else {
       // Update UI
-      document.getElementById(`user-${this._peer.id}-name`).textContent = `${this._name} (You)`
+      if (this._peer) {
+        const peerNameEl = document.getElementById(`user-${this._peer.id}-name`);
+        if (peerNameEl) peerNameEl.textContent = `${this._name} (You)`;
 
-      // Notify Host
-      this._remotePeers[this._room_id].conn.send({'webrtc-user-name': {"id": this._peer.id, "name": this._name}})
+        // Notify Host
+        if (this._remotePeers[this._room_id]?.conn) {
+          this._remotePeers[this._room_id].conn.send({'webrtc-user-name': {"id": this._peer.id, "name": this._name}});
+        }
+      }
     }
 
-    // Close modal
-    const modal = bootstrap.Modal.getInstance(dom.name_modal);
-    modal.hide()
-    showToast(`Name changed to ${this._name}.`)
+    // Close modal safely if open
+    if (typeof bootstrap !== 'undefined' && bootstrap.Modal && dom.name_modal) {
+      try {
+        const modal = bootstrap.Modal.getInstance(dom.name_modal);
+        if (modal) modal.hide();
+      } catch {}
+    }
+    showToast(`Name changed to ${this._name}.`);
   }
 
   // Add one or multiple file to be transferred to all peers

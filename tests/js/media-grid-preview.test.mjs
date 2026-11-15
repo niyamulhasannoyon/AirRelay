@@ -268,3 +268,28 @@ test('User _renderFilePreview directly renders fallback tile when no thumbnail o
   assert.ok(container.children[0].innerHTML.includes('.pdf'));
 });
 
+test('User changeName safely updates user name without throwing if bootstrap modal is absent', () => {
+  const user = new User('test-room');
+  assert.ok(typeof user.name === 'string' && user.name.length > 0);
+
+  // Change name via changeName(newName)
+  user.changeName('ProfessionalTester');
+  assert.equal(user.name, 'ProfessionalTester');
+
+  // Passing empty string or whitespace should not corrupt name
+  user.changeName('   ');
+  assert.equal(user.name, 'ProfessionalTester');
+});
+
+test('User password property getter and setter correctly manages room security state', () => {
+  const user = new User('test-room');
+  assert.equal(user.password, '');
+
+  user.password = 'superSecret123';
+  assert.equal(user.password, 'superSecret123');
+
+  user.password = null;
+  assert.equal(user.password, '');
+});
+
+

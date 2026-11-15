@@ -199,7 +199,7 @@ async function onLoad() {
       dom.transfer_users_list_host_os.innerHTML = getOSIconSVG(user.os, 16);
     }
     dom.transfer_users_count.innerHTML = ' (1)'
-    dom.transfer_add_password.style.display = 'block';
+    if (dom.transfer_add_password) dom.transfer_add_password.style.display = 'none';
     updateQRCodes(dom.transfer_url_value.textContent);
 
     // Init peer connection. user.init throws on ICE-credential failure or any pre-
@@ -332,11 +332,6 @@ function aboutClick() {
   }
 }
 
-function addPassword() {
-  const modal = new bootstrap.Modal(dom.password_modal)
-  modal.show()
-}
-
 // Show / Hide password
 function togglePasswordVisibility(input_name, button_show_name, button_hide_name) {
   var password_input = document.getElementById(input_name)
@@ -356,11 +351,17 @@ function togglePasswordVisibility(input_name, button_show_name, button_hide_name
 
 // Confirm change password
 function addPasswordSubmit() {
-  user.password = dom.password_modal_value.value.trim()
-  const modal = bootstrap.Modal.getInstance(dom.password_modal);
-  modal.hide()
-  dom.transfer_status_protected.style.display = user.password.length == 0 ? 'none' : 'inline-block'
-  showToast(user.password.length == 0 ? 'Password removed.' : 'Password set.')
+  user.password = dom.password_modal_value?.value.trim() || '';
+  if (typeof bootstrap !== 'undefined' && bootstrap.Modal && dom.password_modal) {
+    try {
+      const modal = bootstrap.Modal.getInstance(dom.password_modal);
+      if (modal) modal.hide();
+    } catch {}
+  }
+  if (dom.transfer_status_protected) {
+    dom.transfer_status_protected.style.display = user.password.length == 0 ? 'none' : 'inline-block';
+  }
+  showToast(user.password.length == 0 ? 'Password removed.' : 'Password set.');
 }
 
 function connectWithPassword() {
@@ -598,6 +599,23 @@ function saveRoomPassword() {
     dom.transfer_status_protected.style.display = pwd.length > 0 ? 'inline-block' : 'none';
   }
   showToast(pwd.length > 0 ? 'Room password protected.' : 'Password removed.');
+}
+
+// Toggle room details panel when connected
+function toggleRoomDetails() {
+  if (!dom.connection_details_panel) return;
+  const isMin = dom.connection_details_panel.classList.contains('minimized');
+  if (isMin) {
+    dom.connection_details_panel.classList.remove('minimized');
+    if (user) user._userManuallyExpandedRoom = true;
+    if (dom.toggle_room_details_text) dom.toggle_room_details_text.textContent = 'Hide Info';
+    if (dom.toggle_room_details_chevron) dom.toggle_room_details_chevron.style.transform = 'rotate(180deg)';
+  } else {
+    dom.connection_details_panel.classList.add('minimized');
+    if (user) user._userManuallyExpandedRoom = false;
+    if (dom.toggle_room_details_text) dom.toggle_room_details_text.textContent = 'Room Info';
+    if (dom.toggle_room_details_chevron) dom.toggle_room_details_chevron.style.transform = 'rotate(0deg)';
+  }
 }
 
 // Inline host name editing
@@ -916,14 +934,35 @@ function initDigitInputs() {
   if (!boxes || boxes.length === 0) return;
 
   boxes.forEach((box, index) => {
+    box.addEventListener('focus', () => {
+      box.select();
+    });
+
     box.addEventListener('input', () => {
       const val = box.value.replace(/\D/g, '');
-      box.value = val ? val[val.length - 1] : '';
+      if (val.length > 1) {
+        // Multi-character input (paste, autofill, quick typing)
+        const chars = val.split('');
+        for (let i = 0; i < chars.length && (index + i) < boxes.length; i++) {
+          boxes[index + i].value = chars[i];
+          boxes[index + i].classList.add('filled');
+        }
+        const nextIdx = Math.min(index + chars.length, boxes.length - 1);
+        boxes[nextIdx].focus();
+        boxes[nextIdx].select();
+        const fullCode = Array.from(boxes).map(b => b.value).join('');
+        if (fullCode.length === 6) {
+          submitJoinCode(fullCode);
+        }
+        return;
+      }
 
+      box.value = val ? val[0] : '';
       if (box.value) {
         box.classList.add('filled');
         if (index < boxes.length - 1) {
           boxes[index + 1].focus();
+          boxes[index + 1].select();
         } else {
           const fullCode = Array.from(boxes).map(b => b.value).join('');
           if (fullCode.length === 6) {
@@ -947,8 +986,10 @@ function initDigitInputs() {
         }
       } else if (e.key === 'ArrowLeft' && index > 0) {
         boxes[index - 1].focus();
+        boxes[index - 1].select();
       } else if (e.key === 'ArrowRight' && index < boxes.length - 1) {
         boxes[index + 1].focus();
+        boxes[index + 1].select();
       } else if (e.key === 'Enter') {
         const fullCode = Array.from(boxes).map(b => b.value).join('');
         if (fullCode.length === 6) {
@@ -959,7 +1000,7 @@ function initDigitInputs() {
 
     box.addEventListener('paste', (e) => {
       e.preventDefault();
-      const paste = (e.clipboardData || window.clipboardData).getData('text');
+      const paste = (e.clipboardData || window.clipboardData)?.getData('text');
       if (!paste) return;
 
       const trimmed = paste.trim();
@@ -1182,11 +1223,17 @@ function bindUI() {
   on('room-tab-security-btn', 'click', () => switchRoomHubTab('security'));
   on('room-password-save-btn', 'click', saveRoomPassword);
   onEnter('room-password-input', saveRoomPassword);
+  on('transfer-status-protected', 'click', () => {
+    if (dom.connection_details_panel?.classList.contains('minimized')) {
+      toggleRoomDetails();
+    }
+    switchRoomHubTab('security');
+    dom.room_password_input?.focus();
+  });
 
-  on('theme-text', 'click', themeClick);
   on('theme-toggle-btn', 'click', themeClick);
-  on('about-text', 'click', aboutClick);
   on('about-btn', 'click', aboutClick);
+  on('toggle-room-details-btn', 'click', toggleRoomDetails);
   on('header-logo', 'click', () => { window.location.href = '/' });
   on('join-room-btn', 'click', () => openJoinModal('code'));
   onEnter('password-input', connectWithPassword);
@@ -1257,7 +1304,6 @@ function bindUI() {
     }
   });
   on('transfer-select-file-input', 'change', (e) => sendFiles(e.target));
-  on('transfer-add-password-btn', 'click', addPassword);
   on('transfer-users-change-name', 'click', changeName);
   on('transfer-files-download', 'click', downloadAll);
   onEnter('password-modal-value', addPasswordSubmit);
