@@ -1396,6 +1396,26 @@ kbd {
   box-shadow: var(--accent-glow);
 }
 
+/* Error Reconnection Card */
+.error-card {
+  border-color: rgba(239, 68, 68, 0.35) !important;
+  background: var(--glass-bg) !important;
+  box-shadow: 0 12px 36px rgba(239, 68, 68, 0.12), var(--shadow-lg) !important;
+  animation: fadeInDown 0.25s ease-out;
+}
+
+.error-icon-circle {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--status-danger-bg);
+  color: var(--status-danger);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 24px rgba(239, 68, 68, 0.25);
+}
+
 /* Nearby Room Banner (AirDrop style) */
 .nearby-room-banner {
   border-color: rgba(59, 130, 246, 0.35) !important;

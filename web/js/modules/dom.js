@@ -48,7 +48,14 @@ export const dom = {
 
   // ERROR
   error_div: document.getElementById('error-div'),
+  error_title: document.getElementById('error-title'),
   error_message: document.getElementById('error-message'),
+  error_hint: document.getElementById('error-hint'),
+  error_retry_btn: document.getElementById('error-retry-btn'),
+  error_retry_icon: document.getElementById('error-retry-icon'),
+  error_retry_spinner: document.getElementById('error-retry-spinner'),
+  error_retry_text: document.getElementById('error-retry-text'),
+  error_reload_btn: document.getElementById('error-reload-btn'),
 
   // PASSWORD
   password_div: document.getElementById('password-div'),

@@ -36,7 +36,23 @@ echo "==> Starting FastAPI signaling backend on 127.0.0.1:8000..."
 python3 -m uvicorn api.main:app --host 127.0.0.1 --port 8000 --ws-max-size 65536 &
 UVICORN_PID=$!
 
-# Start Nginx reverse proxy on 0.0.0.0:TARGET_PORT
+# Wait for FastAPI backend to be fully healthy before opening Nginx
+echo "==> Waiting for FastAPI backend to be ready on 127.0.0.1:8000..."
+READY=0
+for i in $(seq 1 40); do
+  if wget -q -O - http://127.0.0.1:8000/health >/dev/null 2>&1; then
+    echo "==> FastAPI backend is ready and responding!"
+    READY=1
+    break
+  fi
+  sleep 0.25
+done
+
+if [ $READY -eq 0 ]; then
+  echo "==> WARNING: FastAPI backend did not respond within 10s, proceeding to start Nginx..."
+fi
+
+# Start Nginx reverse proxy on 0.0.0.0:${TARGET_PORT}
 echo "==> Starting Nginx frontend on 0.0.0.0:${TARGET_PORT}..."
 nginx -g "daemon off;" &
 NGINX_PID=$!

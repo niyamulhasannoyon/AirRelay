@@ -18,6 +18,7 @@ import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, RedirectResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from api.main import app as api_app
@@ -27,6 +28,9 @@ BASE_DIR = Path(__file__).resolve().parent
 WEB_DIR = BASE_DIR / "web"
 
 server = FastAPI(title="AirRelay Server", docs_url=None, redoc_url=None)
+
+# GZip compression for static assets and API responses
+server.add_middleware(GZipMiddleware, minimum_size=500)
 
 # CORS middleware for local development flexibility
 server.add_middleware(

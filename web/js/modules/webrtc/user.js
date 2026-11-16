@@ -452,7 +452,7 @@ export class User {
     return true;
   }
 
-  async init(peer_id = null, code = null) {
+  async init(peer_id = null, code = null, onProgress = null) {
     // Generate UUID locally without network roundtrip
     if (peer_id == null) peer_id = generateUUID();
     if (code) this._code = code;
@@ -464,10 +464,46 @@ export class User {
       iceServers = await turn.getServers();
     } catch (err) {
       console.warn('user.init: failed to get ICE servers:', err);
-      throw err;
+      iceServers = [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+      ];
     }
 
-    await new Promise((resolve, reject) => {
+    const maxInitAttempts = 3;
+    let lastError = null;
+
+    for (let attempt = 1; attempt <= maxInitAttempts; attempt++) {
+      try {
+        if (attempt > 1 && typeof onProgress === 'function') {
+          onProgress(`Connecting to server (attempt ${attempt}/${maxInitAttempts})...`);
+        }
+        await this._connectPeer(peer_id, iceServers);
+        return;
+      } catch (err) {
+        lastError = err;
+        console.warn(`user.init attempt ${attempt}/${maxInitAttempts} failed:`, err);
+        if (attempt < maxInitAttempts) {
+          const delay = 1000 * attempt;
+          if (typeof onProgress === 'function') {
+            onProgress(`Server waking up... retrying in ${attempt}s`);
+          }
+          await new Promise(r => setTimeout(r, delay));
+        }
+      }
+    }
+
+    throw lastError || new Error('Failed to connect to signaling server.');
+  }
+
+  _connectPeer(peer_id, iceServers) {
+    return new Promise((resolve, reject) => {
+      // Clean up previous peer if retrying
+      if (this._peer) {
+        try { this._peer.destroy(); } catch {}
+        this._peer = null;
+      }
+
       // Create a new Peer instance
       const isSecure = window.location.protocol === 'https:';
       this._peer = new Peer(peer_id, {
@@ -536,7 +572,7 @@ export class User {
           settle(reject, err);
         }
       });
-    })
+    });
   }
 
   async connect(peer_id) {
@@ -589,7 +625,7 @@ export class User {
     }
   }
 
-  // Emitted when a connection to the PeerServer is established. 
+  // Emitted when a connection to the PeerServer is established.
   _handleOpen(resolve) {
     resolve()
   }
@@ -634,11 +670,19 @@ export class User {
   }
 
   // Shows the fatal error page.
-  _showFatalError(message) {
-    dom.transfer_div.style.display = 'none';
-    dom.connect_div.style.display = 'none';
-    dom.error_div.style.display = 'block';
-    dom.error_message.innerHTML = message;
+  _showFatalError(message, title = 'AirRelay Disconnected') {
+    if (dom.transfer_div) dom.transfer_div.style.display = 'none';
+    if (dom.connect_div) dom.connect_div.style.display = 'none';
+    if (dom.join_view) dom.join_view.style.display = 'none';
+    if (dom.error_div) {
+      dom.error_div.style.display = 'block';
+      if (dom.error_title) dom.error_title.textContent = title;
+      if (dom.error_message) dom.error_message.innerHTML = message;
+      if (dom.error_hint) dom.error_hint.style.display = 'none';
+      if (dom.error_retry_btn) {
+        dom.error_retry_btn.onclick = () => window.location.reload();
+      }
+    }
   }
 
   // Change user's name
@@ -1768,7 +1812,7 @@ export class User {
           document.getElementById(`file-${file.id}-download`).style.display = 'none'
           document.getElementById(`file-${file.id}-icon-loading`).style.display = 'none'
           document.getElementById(`file-${file.id}-icon-failed`).style.display = 'none'
-          document.getElementById(`file-${file.id}-error`).style.display = 'block' 
+          document.getElementById(`file-${file.id}-error`).style.display = 'block'
           document.getElementById(`file-${file.id}-error`).innerHTML = 'The user has disconnected.'
           file.removed = true
         }
@@ -2026,7 +2070,7 @@ export class User {
     document.getElementById(`file-${data.file_id}-download`).style.display = 'none'
     document.getElementById(`file-${data.file_id}-icon-loading`).style.display = 'none'
     document.getElementById(`file-${data.file_id}-icon-failed`).style.display = 'none'
-    document.getElementById(`file-${data.file_id}-error`).style.display = 'block' 
+    document.getElementById(`file-${data.file_id}-error`).style.display = 'block'
     document.getElementById(`file-${data.file_id}-error`).innerHTML = 'This file has been removed.'
 
     // Send file to all peers excluding the peer that has sent the file

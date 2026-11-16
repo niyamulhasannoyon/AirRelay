@@ -98,6 +98,115 @@ async function loadVersion() {
   } catch {}
 }
 
+// Display professional error card with actionable retry and diagnostics
+function showAppError(title, message, retryFn = null, showHint = true) {
+  if (dom.transfer_div) dom.transfer_div.style.display = 'none';
+  if (dom.connect_div) dom.connect_div.style.display = 'none';
+  if (dom.join_view) dom.join_view.style.display = 'none';
+  if (dom.error_div) {
+    dom.error_div.style.display = 'block';
+    if (dom.error_title) dom.error_title.textContent = title;
+    if (dom.error_message) dom.error_message.innerHTML = message;
+    if (dom.error_hint) dom.error_hint.style.display = showHint ? 'block' : 'none';
+
+    if (dom.error_retry_btn) {
+      dom.error_retry_btn.disabled = false;
+      dom.error_retry_btn.style.display = retryFn ? 'inline-flex' : 'none';
+      if (dom.error_retry_icon) dom.error_retry_icon.style.display = 'inline-block';
+      if (dom.error_retry_spinner) dom.error_retry_spinner.style.display = 'none';
+      if (dom.error_retry_text) dom.error_retry_text.textContent = 'Retry Connection';
+
+      dom.error_retry_btn.onclick = async () => {
+        dom.error_retry_btn.disabled = true;
+        if (dom.error_retry_icon) dom.error_retry_icon.style.display = 'none';
+        if (dom.error_retry_spinner) dom.error_retry_spinner.style.display = 'inline-block';
+        if (dom.error_retry_text) dom.error_retry_text.textContent = 'Connecting...';
+        if (typeof retryFn === 'function') {
+          await retryFn();
+        }
+      };
+    }
+
+    if (dom.error_reload_btn) {
+      dom.error_reload_btn.onclick = () => window.location.reload();
+    }
+  }
+}
+
+async function startHostSession(roomId) {
+  if (dom.error_div) dom.error_div.style.display = 'none';
+  if (dom.transfer_div) dom.transfer_div.style.display = 'block';
+  if (dom.transfer_status_wait) {
+    dom.transfer_status_wait.style.display = 'inline-flex';
+    const waitText = document.getElementById('transfer-status-wait-text');
+    if (waitText) waitText.textContent = 'Starting AirRelay...';
+  }
+  if (dom.transfer_status_success) dom.transfer_status_success.style.display = 'none';
+
+  try {
+    await user.init(roomId, null, (statusText) => {
+      const waitText = document.getElementById('transfer-status-wait-text');
+      if (waitText) waitText.textContent = statusText;
+    });
+
+    const waitText = document.getElementById('transfer-status-wait-text');
+    if (waitText) waitText.textContent = 'Waiting for peers...';
+
+    if (user.code) {
+      const formattedCode = `${user.code.slice(0, 3)} ${user.code.slice(3, 6)}`;
+      if (dom.room_code_val) dom.room_code_val.textContent = formattedCode;
+      if (dom.qr_modal_code_val) dom.qr_modal_code_val.textContent = formattedCode;
+    }
+    checkSharedTargetFiles(user);
+    checkAndDisplayNearbyRooms();
+  } catch (err) {
+    console.warn('Host init failed:', err);
+    showAppError(
+      'Could Not Connect to AirRelay',
+      'The signaling server could not be reached. If hosted on a free cloud tier (such as Render), the server may take ~45–60 seconds to spin up from sleep.',
+      () => startHostSession(roomId),
+      true
+    );
+  }
+}
+
+async function startPeerSession(targetPeerId) {
+  if (dom.error_div) dom.error_div.style.display = 'none';
+  if (dom.connect_div) dom.connect_div.style.display = 'block';
+
+  updateConnectStatus('Preparing connection...', 'Pre-warming WebRTC ICE candidates');
+  try {
+    await user.init(null, null, (statusText) => {
+      updateConnectStatus('Preparing connection...', statusText);
+    });
+    checkSharedTargetFiles(user);
+  } catch (err) {
+    console.warn('Peer init failed:', err);
+    showAppError(
+      'Could Not Connect to AirRelay',
+      'Failed to reach the signaling server. Please check your connection and retry.',
+      () => startPeerSession(targetPeerId),
+      true
+    );
+    return;
+  }
+
+  updateConnectStatus('Connecting to peer...', 'Exchanging ICE candidates & DTLS encryption keys');
+  try {
+    await user.connect(targetPeerId);
+  } catch (err) {
+    console.warn('Failed to join room:', err);
+    if (user._status?.status !== 'rejected') {
+      showAppError(
+        'Room Unavailable',
+        'Could not reach the host peer. The room may no longer be active or the host may have disconnected.',
+        () => startPeerSession(targetPeerId),
+        false
+      );
+    }
+  }
+}
+
 // On Load
 async function onLoad() {
   // If joining a room, immediately display connect UI so the screen is never blank
@@ -118,8 +227,12 @@ async function onLoad() {
   // Check WebRTC browser compatibility
   if (typeof RTCPeerConnection === 'undefined') {
     if (dom.connect_div) dom.connect_div.style.display = 'none';
-    dom.error_div.style.display = 'block';
-    dom.error_message.innerHTML = 'Your browser does not support <a href="https://caniuse.com/?search=webrtc" target="_blank" style="color: inherit; text-decoration: underline;">WebRTC</a>.<br><span style="color: #6c757d; font-size: 14px; margin-top: 10px; display: inline-block;">Please use a modern browser such as Chrome, Firefox, or Safari.</span>';
+    showAppError(
+      'Browser Not Supported',
+      'Your browser does not support WebRTC data channels. Please use a modern browser such as Chrome, Safari, Firefox, or Edge.',
+      null,
+      false
+    );
     return;
   }
 
@@ -187,42 +300,21 @@ async function onLoad() {
   // Host
   if (room_id.length == 0) {
     // Generate Room ID
-    const new_room_id = generateRoomID()
+    const new_room_id = generateRoomID();
 
     // Init UI Components
-    dom.transfer_div.style.display = 'block'
-    dom.transfer_url_value.textContent = `${window.location.origin}/${new_room_id}`
-    dom.transfer_users_list_host_name.innerHTML = user.name + ' (You)'
+    dom.transfer_url_value.textContent = `${window.location.origin}/${new_room_id}`;
+    dom.transfer_users_list_host_name.innerHTML = user.name + ' (You)';
     const hostAvatar = document.getElementById('transfer-users-list-host-avatar');
     if (hostAvatar) hostAvatar.innerHTML = getIdenticonSVG(user.name, 18);
     if (dom.transfer_users_list_host_os) {
       dom.transfer_users_list_host_os.innerHTML = getOSIconSVG(user.os, 16);
     }
-    dom.transfer_users_count.innerHTML = ' (1)'
+    dom.transfer_users_count.innerHTML = ' (1)';
     if (dom.transfer_add_password) dom.transfer_add_password.style.display = 'none';
     updateQRCodes(dom.transfer_url_value.textContent);
 
-    // Init peer connection. user.init throws on ICE-credential failure or any pre-
-    // 'open' Peer error — surface that here so the host UI doesn't sit silently on
-    // top of a half-initialized user._peer.
-    try {
-      await user.init(new_room_id);
-      if (user.code) {
-        const formattedCode = `${user.code.slice(0, 3)} ${user.code.slice(3, 6)}`;
-        if (dom.room_code_val) dom.room_code_val.textContent = formattedCode;
-        if (dom.qr_modal_code_val) dom.qr_modal_code_val.textContent = formattedCode;
-      }
-      checkSharedTargetFiles(user);
-      // Auto-discover other active rooms on the local network (AirDrop style)
-      checkAndDisplayNearbyRooms();
-    } catch (err) {
-      console.warn('Host init failed:', err);
-      dom.transfer_div.style.display = 'none';
-      dom.connect_div.style.display = 'none';
-      dom.error_div.style.display = 'block';
-      dom.error_message.innerHTML = 'Could not start AirRelay. Please check your connection and refresh the page.';
-      return;
-    }
+    await startHostSession(new_room_id);
   }
   // Peer
   else {
@@ -256,30 +348,16 @@ async function onLoad() {
     dom.transfer_url_value.textContent = `${window.location.origin}/${targetPeerId}`;
     updateQRCodes(dom.transfer_url_value.textContent);
 
-    updateConnectStatus('Preparing connection...', 'Pre-warming WebRTC ICE candidates');
-    try {
-      await user.init();
-      checkSharedTargetFiles(user);
-    } catch (err) {
-      console.warn('Peer init failed:', err);
-      dom.connect_div.style.display = 'none';
-      dom.error_div.style.display = 'block';
-      dom.error_message.innerHTML = 'Could not start AirRelay. Please check your connection and refresh the page.';
-      return;
-    }
-
-    updateConnectStatus('Connecting to peer...', 'Exchanging ICE candidates & DTLS encryption keys');
-    try {
-      await user.connect(targetPeerId);
-    } catch (err) {
-      console.warn('Failed to join room:', err);
-      if (user._status?.status !== 'rejected') {
-        dom.connect_div.style.display = 'none';
-        dom.error_div.style.display = 'block';
-        dom.error_message.innerHTML = 'Could not reach the host. The room may no longer be active.';
-      }
-    }
+    await startPeerSession(targetPeerId);
   }
+
+  // Keep-alive heartbeat: ping /api/health every 5 minutes while user has tab open
+  // to keep Render free tier warm and responsive during active sessions
+  setInterval(async () => {
+    try {
+      await fetch('/api/health', { method: 'GET', cache: 'no-store' });
+    } catch {}
+  }, 5 * 60 * 1000);
 }
 
 // Theme
@@ -557,6 +635,7 @@ async function checkAndDisplayNearbyRooms() {
 function switchMainMode(mode) {
   if (mode === 'join') {
     if (dom.transfer_div) dom.transfer_div.style.display = 'none';
+    if (dom.error_div) dom.error_div.style.display = 'none';
     if (dom.join_view) dom.join_view.style.display = 'block';
     dom.mode_join_btn?.classList.add('active');
     dom.mode_share_btn?.classList.remove('active');

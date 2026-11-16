@@ -209,13 +209,35 @@
         </p>
       </section>
 
-      <!-- ERROR BANNER -->
-      <section id="error-div" class="glass-panel p-4 mb-4" style="display: none; border-color: rgba(239, 68, 68, 0.4); background: var(--status-danger-bg);">
-        <div style="display: flex; align-items: center; gap: 12px; color: var(--status-danger);">
-          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" fill="currentColor" viewBox="0 0 16 16" style="flex-shrink: 0;">
-            <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zM8 4a.905.905 0 0 0-.9.995l.35 3.507a.552.552 0 0 0 1.1 0l.35-3.507A.905.905 0 0 0 8 4zm.002 6a1 1 0 1 0 0 2 1 1 0 0 0 0-2z"/>
-          </svg>
-          <span id="error-message" style="font-size: 0.95rem; font-weight: 500; color: var(--text-primary);"></span>
+      <!-- ERROR / RECONNECTION CARD -->
+      <section id="error-div" class="glass-panel p-4 mb-4 text-center error-card" style="display: none; max-width: 540px; margin-left: auto; margin-right: auto;">
+        <div class="mb-3">
+          <div class="error-icon-circle">
+            <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" fill="currentColor" viewBox="0 0 16 16">
+              <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zM8 4a.905.905 0 0 0-.9.995l.35 3.507a.552.552 0 0 0 1.1 0l.35-3.507A.905.905 0 0 0 8 4zm.002 6a1 1 0 1 0 0 2 1 1 0 0 0 0-2z"/>
+            </svg>
+          </div>
+        </div>
+        <h3 id="error-title" style="font-size: 1.25rem; font-weight: 700; color: var(--text-primary); margin: 0 0 8px;">Connection Interrupted</h3>
+        <p id="error-message" style="color: var(--text-secondary); font-size: 0.92rem; line-height: 1.5; margin: 0 0 16px;"></p>
+        <div id="error-hint" style="background: var(--glass-bg-subtle); border: 1px solid var(--glass-border); border-radius: var(--radius-md); padding: 12px 16px; font-size: 0.84rem; color: var(--text-secondary); line-height: 1.5; margin-bottom: 20px; text-align: left;">
+          <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 3px; display: flex; align-items: center; gap: 6px;">
+            <span>⚡ Server Wake-up Note</span>
+          </div>
+          <span>When hosted on free cloud tiers (like Render), inactive servers spin down and require ~45–60 seconds to wake up. Retrying will connect once the instance finishes booting.</span>
+        </div>
+        <div class="d-flex align-items-center justify-content-center gap-2 flex-wrap">
+          <button id="error-retry-btn" class="btn-primary-pill btn-sm" type="button" style="padding: 8px 22px;">
+            <svg id="error-retry-icon" xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="currentColor" viewBox="0 0 16 16">
+              <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/>
+              <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/>
+            </svg>
+            <div id="error-retry-spinner" class="spinner-border spinner-border-sm" style="display: none; width: 0.95rem; height: 0.95rem; margin-right: 6px;" role="status"></div>
+            <span id="error-retry-text">Retry Connection</span>
+          </button>
+          <button id="error-reload-btn" class="btn-glass" type="button" style="font-size: 0.85rem; padding: 7px 18px;">
+            <span>Reload Page</span>
+          </button>
         </div>
       </section>
 
@@ -447,7 +469,7 @@
 
                 <span id="transfer-status-wait" class="room-status-indicator room-status-waiting">
                   <span class="pulse-dot blue"></span>
-                  <span>Waiting for peers...</span>
+                  <span id="transfer-status-wait-text">Starting AirRelay...</span>
                 </span>
 
                 <span id="transfer-status-success" class="room-status-indicator room-status-active" style="display: none;">

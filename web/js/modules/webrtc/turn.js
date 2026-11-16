@@ -4,63 +4,82 @@ class Turn {
   _expiration = null;
 
   getServers = async () => {
-    await this._getCredentials();
-    // Use the hostname as the page is served from. We deliberately do NOT substitute
-    // 'localhost' for '127.0.0.1' here: Firefox blocks loopback IP literals in ICE
-    // candidate gathering as a privacy measure (prevents fingerprinting local services)
-    // but accepts the literal 'localhost' for TCP-based transports. Substituting would
-    // strictly worsen Firefox behavior in localhost dev mode while changing nothing in
-    // Chrome. In any non-loopback deployment (LAN IP, public IP, domain) both browsers
-    // work identically — this code path simply returns whatever the operator's users
-    // typed in the address bar.
+    try {
+      await this._getCredentials();
+    } catch (err) {
+      console.warn('Could not fetch TURN credentials, falling back to public STUN:', err);
+    }
+
     const host = window.location.hostname;
-    // Provide both UDP and TCP TURN URLs. The browser's ICE agent will prefer UDP
-    // when reachable (lower overhead, lower latency) and silently fall back to TCP
-    // when UDP is blocked — a common case on corporate networks, some mobile carriers,
-    // and most public Wi-Fi captive portals. coturn listens for both on port 3478.
-    return [
+    // Always provide resilient Google STUN servers for WebRTC direct NAT traversal
+    const servers = [
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
-      { urls: `stun:${host}:3478` },
-      {
+      { urls: 'stun:stun2.l.google.com:19302' },
+    ];
+
+    const isLocal = !host || host === 'localhost' || host === '127.0.0.1' || host.startsWith('192.168.') || host.startsWith('10.');
+    if (isLocal) {
+      servers.push({ urls: `stun:${host}:3478` });
+    }
+
+    // Include TURN relay endpoints if credentials were successfully minted
+    if (this._username && this._credential) {
+      servers.push({
         urls: [
           `turn:${host}:3478`,
           `turn:${host}:3478?transport=tcp`,
         ],
         username: this._username,
         credential: this._credential,
-      },
-    ];
-  }
+      });
+    }
 
-  _getCredentials = async () => {
+    return servers;
+  };
+
+  _getCredentials = async (retries = 3, timeoutMs = 5000) => {
     const now = Math.floor(Date.now() / 1000);
 
-    // Check if token is still valid
+    // Check if cached token is still valid
     if (this._expiration !== null && this._expiration > now) {
       return { username: this._username, credential: this._credential };
     }
 
-    // Fetch new token
-    const response = await fetch("/api/credentials", { method: "GET" });
+    let lastError = null;
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+        const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
 
-    if (!response.ok) {
-      throw new Error("An issue occurred while getting the token.");
+        const response = await fetch("/api/credentials", {
+          method: "GET",
+          signal: controller ? controller.signal : undefined,
+        });
+        if (timer) clearTimeout(timer);
+
+        if (!response.ok) {
+          throw new Error(`Credential endpoint returned HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+        const token = data?.token;
+        if (!token) throw new Error("No token in credential response");
+
+        const payload = this._decodeJwt(token);
+        this._username = payload.username;
+        this._credential = payload.credential;
+        this._expiration = payload.exp - 10; // Subtract 10 seconds for safety
+        return { username: this._username, credential: this._credential };
+      } catch (err) {
+        lastError = err;
+        if (attempt < retries) {
+          await new Promise(r => setTimeout(r, attempt * 800));
+        }
+      }
     }
 
-    // Parse the response as JSON
-    const data = await response.json();
-
-    const token = data.token
-    if (!token) throw new Error("No token in credential response");
-
-    // Decode JWT to get username and credential
-    const payload = this._decodeJwt(token);
-
-    // Set cached values
-    this._username = payload.username;
-    this._credential = payload.credential;
-    this._expiration = payload.exp - 10; // Subtract 10 seconds for safety
+    throw lastError || new Error("Failed to get credentials after retries.");
   };
 
   _decodeJwt(token) {
